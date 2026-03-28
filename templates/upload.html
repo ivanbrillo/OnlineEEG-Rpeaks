@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}OnlineEEG — Upload{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Upload Training Data</h1>
+    <p>Upload a ZIP archive containing paired EEG and ECG MATLAB files for one or more subjects.
+       New subjects are added to the existing dataset. Use <strong>Reset Dataset</strong> to clear all data.</p>
+</div>
+
+<!-- ── Upload form ────────────────────────────────────────── -->
+<div class="card">
+    <h2>Upload</h2>
+    <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="zip_file">Training Data (ZIP)</label>
+            <input type="file" id="zip_file" name="zip_file" accept=".zip" required>
+            <span class="hint">
+                ZIP must contain pairs of <code>P###_EEG.mat</code> and <code>P###_ECG.mat</code>
+                for each subject (e.g. <code>P023_EEG.mat</code> + <code>P023_ECG.mat</code>).
+                Files may be in subdirectories. Sampling rate is read automatically from <code>EEG.srate</code>.
+            </span>
+        </div>
+        <div class="btn-group">
+            <button type="submit" class="btn btn-primary">Upload &amp; Parse</button>
+        </div>
+    </form>
+</div>
+
+<!-- ── Upload result ──────────────────────────────────────── -->
+{% if upload_result %}
+<div class="card">
+    <h2>Upload Status</h2>
+    <table class="metrics-table">
+        <tbody>
+            {% if upload_result.num_subjects is defined %}
+            <tr><th>Subjects parsed (this upload)</th><td>{{ upload_result.num_subjects }}</td></tr>
+            {% endif %}
+            {% if upload_result.total_subjects is defined %}
+            <tr><th>Total subjects in dataset</th><td>{{ upload_result.total_subjects }}</td></tr>
+            {% endif %}
+            {% if upload_result.message %}
+            <tr><th>Message</th><td>{{ upload_result.message }}</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- ── Expected .mat file structure ──────────────────────── -->
+<div class="card">
+    <h2>Expected .mat File Structure</h2>
+    <p class="text-muted" style="margin-bottom:1rem;">
+        Each subject requires two MATLAB files. The fields listed below must be present
+        with the exact names shown.
+    </p>
+
+    <h3><code>P###_EEG.mat</code></h3>
+    <table class="metrics-table" style="margin-bottom:1.25rem;">
+        <thead>
+            <tr><th>Field</th><th>Type / Shape</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>EEG.data</code></td>
+                <td>double (channels × timepoints)</td>
+                <td>Raw EEG signal matrix. Channels in rows, time in columns.</td>
+            </tr>
+            <tr>
+                <td><code>EEG.srate</code></td>
+                <td>scalar [Hz]</td>
+                <td>Sampling rate</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3><code>P###_ECG.mat</code></h3>
+    <table class="metrics-table">
+        <thead>
+            <tr><th>Field</th><th>Type / Shape</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>ECG_i</code></td>
+                <td>double vector [mV]</td>
+                <td>ECG signal. One value per sample, same length as EEG timepoints.</td>
+            </tr>
+            <tr>
+                <td><code>R_peak</code></td>
+                <td>integer vector</td>
+                <td>Sample indices of R-peaks. <strong>1-indexed</strong> (MATLAB convention) - converted to 0-indexed internally.</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% block title %}OnlineEEG — Inference &amp; Results{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Inference &amp; Results</h1>
+    <p>Select a saved model and upload evaluation subjects to run inference. Results appear below once complete.</p>
+</div>
+
+<!-- ── Run Inference Form ─────────────────────────────────── -->
+<div class="card">
+    <h2>Run Inference</h2>
+    <form id="inference-form" action="{{ url_for('inference') }}" method="post" enctype="multipart/form-data">
+
+        <div class="form-group">
+            <label for="model_id">Saved Model</label>
+            <select id="model_id" name="model_id">
+                <option value="" disabled selected>— Select a model —</option>
+                {% for model in models %}
+                <option value="{{ model.id }}">{{ model.name }}{% if model.saved_at %} ({{ model.saved_at[:19]|replace('T', ' ') }}){% endif %}</option>
+                {% endfor %}
+            </select>
+            {% if not models %}
+            <span class="hint">No saved models found. <a href="{{ url_for('training') }}">Train and save a model</a> first.</span>
+            {% endif %}
+        </div>
+
+        <div class="form-group">
+            <label for="pt_file">Or Upload Model File (.pt)</label>
+            <input type="file" id="pt_file" name="pt_file" accept=".pt">
+            <span class="hint">Upload a self-contained <code>.pt</code> model file directly. Overrides the dropdown selection above.</span>
+        </div>
+
+        <div class="form-group">
+            <label for="zip_file">Evaluation Data (ZIP)</label>
+            <input type="file" id="zip_file" name="zip_file" accept=".zip" required>
+            <span class="hint">ZIP must contain <code>P###_EEG.mat</code> files. <code>P###_ECG.mat</code> files are optional — if provided, ground-truth metrics and ECG overlay plots are computed. Evaluation subjects are not added to the training dataset.</span>
+        </div>
+
+        <div class="btn-group">
+            <button type="submit" class="btn btn-primary" id="run-btn">Run Inference</button>
+        </div>
+    </form>
+</div>
+
+<!-- ── Inference Output ───────────────────────────────────── -->
+<div class="card" id="inference-output-card" style="{{ '' if (inference_logs or inference_running) else 'display:none' }}">
+    <h2>Inference Output</h2>
+    <p id="inference-status-text" class="text-muted" style="margin-bottom:0.75rem;">
+        {{ inference_status if inference_status else '' }}
+    </p>
+    <pre id="inference-log-panel" class="log-panel" style="min-height:80px;">{{ inference_logs }}</pre>
+</div>
+
+<!-- ── Summary ────────────────────────────────────────────── -->
+{% if inference_summary %}
+<div class="card">
+    <h2>Run Summary</h2>
+    <table class="metrics-table">
+        <tbody>
+            <tr><th>Subjects</th><td>{{ inference_summary.get('subjects', '—') }}</td></tr>
+            <tr><th>Subjects with ECG</th><td>{{ inference_summary.get('subjects_with_ecg', '—') }}</td></tr>
+            <tr><th>Metrics available</th><td>{{ 'Yes' if inference_summary.get('metrics_available') else 'No (EEG-only upload)' }}</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- ══ Results ════════════════════════════════════════════════ -->
+{% if not results %}
+<div class="card">
+    <p class="text-muted">No results available yet. Run inference above to generate results.</p>
+</div>
+{% else %}
+
+<!-- ── Evaluation Hyperparameters ────────────────────────── -->
+{% if results.global_metrics is not none %}
+{% set ep = results.eval_params or {} %}
+<div class="card">
+    <h2>Evaluation Hyperparameters</h2>
+    <p class="text-muted" style="margin-bottom:0.75rem;">
+        Pre-loaded from the model. Adjust and click <strong>Recompute</strong> to update metrics/plots.
+    </p>
+    <form action="{{ url_for('inference_recompute') }}" method="post">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="ep_height">Height Threshold</label>
+                <input type="number" id="ep_height" name="height_threshold" step="0.01"
+                       value="{{ ep.get('height_threshold', -0.4) }}">
+                <span class="hint">Minimum inverted-DT peak height for detection (negative value).</span>
+            </div>
+            <div class="form-group">
+                <label for="ep_min_dist">Min Distance (samples)</label>
+                <input type="number" id="ep_min_dist" name="min_dist" step="1" min="1"
+                       value="{{ ep.get('min_dist', 200) }}">
+                <span class="hint">Minimum number of samples between two detected peaks.</span>
+            </div>
+            <div class="form-group">
+                <label for="ep_tol_ms">Tolerance (ms)</label>
+                <input type="number" id="ep_tol_ms" name="tol_ms" step="1" min="1"
+                       value="{{ ep.get('tol_ms', 150) }}">
+                <span class="hint">Match window (±ms) for Precision/Recall/F1 scoring.</span>
+            </div>
+            <div class="form-group">
+                <label for="ep_prominence">Prominence</label>
+                <input type="number" id="ep_prominence" name="prominence" step="0.001" min="0"
+                       value="{{ ep.get('prominence', 0.035) }}">
+                <span class="hint">Minimum prominence of detected peaks.</span>
+            </div>
+        </div>
+        <div class="btn-group">
+            <button type="submit" class="btn btn-primary">Recompute Metrics &amp; Plots</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+<!-- ── Global Metrics ─────────────────────────────────────── -->
+<div class="card">
+    <h2>Global Metrics</h2>
+    {% set gm = results.global_metrics %}
+    {% if gm %}
+    <div class="metric-cards">
+        <div class="metric-card">
+            <div class="metric-label">Precision</div>
+            <div class="metric-value">{{ format_metric(gm.get('precision'), 3) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Recall</div>
+            <div class="metric-value">{{ format_metric(gm.get('recall'), 3) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">F1</div>
+            <div class="metric-value">{{ format_metric(gm.get('f1'), 3) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">MAE (s)</div>
+            <div class="metric-value">{{ format_metric(gm.get('mae'), 4) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">mRR err %</div>
+            <div class="metric-value">{{ format_metric(gm.get('mrr_error'), 2) }}</div>
+        </div>
+    </div>
+    {% else %}
+    <p class="text-muted">Metrics not available — no ECG files were uploaded.</p>
+    {% endif %}
+</div>
+
+<!-- ── Per-Subject Metrics ────────────────────────────────── -->
+{% if results.per_subject %}
+<div class="card">
+    <h2>Per-Subject Metrics</h2>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Subject</th>
+                <th>Segments</th>
+                <th>MAE (s)</th>
+                <th>Precision</th>
+                <th>Recall</th>
+                <th>F1</th>
+                <th>mRR err %</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in results.per_subject %}
+            <tr>
+                <td><strong>{{ row.subject_id }}</strong></td>
+                <td>{{ row.n_segments }}</td>
+                <td>{{ format_metric(row.get('mae'), 4) }}</td>
+                <td>{{ format_metric(row.get('precision'), 3) }}</td>
+                <td>{{ format_metric(row.get('recall'), 3) }}</td>
+                <td>{{ format_metric(row.get('f1'), 3) }}</td>
+                <td>{{ format_metric(row.get('mrr_error'), 2) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- ── Per-Subject Plots with Window Navigation ───────────── -->
+{% if results.subject_details %}
+<p class="text-muted" style="margin-bottom:0.5rem; font-size:0.85rem;">
+    Note: a 1% margin at each edge of every window is excluded from peak extraction and metric calculation to avoid border effects.
+</p>
+{% for subject_id, info in results.subject_details.items() %}
+<div class="card">
+    <h2>{{ subject_id }}{% if not info.has_ecg %} <span class="text-muted" style="font-size:0.85rem; font-weight:400;">(EEG only)</span>{% endif %}</h2>
+
+    <div class="window-nav">
+        <button class="btn btn-secondary btn-sm"
+                onclick="changeWindow('{{ subject_id }}', -1)"
+                id="prev-{{ subject_id }}" disabled>&#8592; Prev</button>
+        <span id="label-{{ subject_id }}">Window 1 / {{ info.n_windows }}</span>
+        <button class="btn btn-secondary btn-sm"
+                onclick="changeWindow('{{ subject_id }}', 1)"
+                id="next-{{ subject_id }}" {% if info.n_windows <= 1 %}disabled{% endif %}>Next &#8594;</button>
+    </div>
+
+    <div class="plot-card" style="max-width:100%;">
+        <img src="{{ url_for('static', filename='plots/' + info.initial_plot) }}"
+             alt="{{ subject_id }} window 0"
+             id="plot-img-{{ subject_id }}"
+             style="width:100%; height:auto;">
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% endif %}{# end if not results #}
+
+<script>
+(function () {
+    // Window state: current index per subject
+    const windowState = {};
+    {% if results and results.subject_details %}
+    {% for subject_id, info in results.subject_details.items() %}
+    windowState["{{ subject_id }}"] = { current: 0, total: {{ info.n_windows }} };
+    {% endfor %}
+    {% endif %}
+
+    window.changeWindow = function(subjectId, delta) {
+        const state = windowState[subjectId];
+        if (!state) return;
+        const newIdx = state.current + delta;
+        if (newIdx < 0 || newIdx >= state.total) return;
+
+        state.current = newIdx;
+
+        // Update label
+        document.getElementById("label-" + subjectId).textContent =
+            "Window " + (newIdx + 1) + " / " + state.total;
+
+        // Update button states
+        document.getElementById("prev-" + subjectId).disabled = (newIdx === 0);
+        document.getElementById("next-" + subjectId).disabled = (newIdx === state.total - 1);
+
+        // Fetch plot via AJAX
+        const img = document.getElementById("plot-img-" + subjectId);
+        img.classList.add("plot-loading");
+
+        fetch("/inference/plot/" + subjectId + "/" + newIdx)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.plot_url) {
+                    img.src = data.plot_url + "?t=" + Date.now();
+                }
+                img.classList.remove("plot-loading");
+            })
+            .catch(function() {
+                img.classList.remove("plot-loading");
+            });
+    };
+
+    // Make dropdown not required when a .pt file is selected
+    const ptInput = document.getElementById("pt_file");
+    const modelSelect = document.getElementById("model_id");
+    if (ptInput && modelSelect) {
+        ptInput.addEventListener("change", function() {
+            if (ptInput.files.length > 0) {
+                modelSelect.removeAttribute("required");
+            } else {
+                {% if models %}
+                modelSelect.setAttribute("required", "required");
+                {% endif %}
+            }
+        });
+    }
+
+    // ── Live inference log polling ────────────────────────────────────────────
+    var logPanel    = document.getElementById("inference-log-panel");
+    var statusEl    = document.getElementById("inference-status-text");
+    var outputCard  = document.getElementById("inference-output-card");
+    var runBtn      = document.getElementById("run-btn");
+    var pollTimer   = null;
+
+    function pollInference() {
+        fetch('{{ url_for("inference_status_api") }}')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (outputCard) outputCard.style.display = '';
+                if (data.logs !== undefined && logPanel) {
+                    var atBottom = logPanel.scrollHeight - logPanel.scrollTop - logPanel.clientHeight < 60;
+                    logPanel.textContent = data.logs;
+                    if (atBottom) logPanel.scrollTop = logPanel.scrollHeight;
+                }
+                if (data.status && statusEl) {
+                    statusEl.textContent = data.status;
+                }
+                if (!data.running) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                    if (runBtn) {
+                        runBtn.disabled = false;
+                        runBtn.textContent = "Run Inference";
+                    }
+                    // Reload to show results (metrics, plots)
+                    window.location.reload();
+                }
+            })
+            .catch(function() { /* ignore transient fetch errors */ });
+    }
+
+    {% if inference_running %}
+    if (runBtn) { runBtn.disabled = true; runBtn.textContent = "Running..."; }
+    pollTimer = setInterval(pollInference, 1000);
+    {% endif %}
+})();
+</script>
+
+{% endblock %}

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}OnlineEEG — Results{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Results</h1>
+    <p>Global and per-subject metrics from the most recent inference run.</p>
+</div>
+
+{% if not results %}
+<div class="card">
+    <p class="text-muted">No results available yet. <a href="{{ url_for('inference') }}">Run inference</a> to generate results.</p>
+</div>
+{% else %}
+
+<!-- ── Global Metrics ─────────────────────────────────────── -->
+<div class="card">
+    <h2>Global Metrics</h2>
+    {% set gm = results.global_metrics %}
+    {% if gm %}
+    <div class="metric-cards">
+        <div class="metric-card">
+            <div class="metric-label">Precision</div>
+            <div class="metric-value">{{ format_metric(gm.get('precision')) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Recall</div>
+            <div class="metric-value">{{ format_metric(gm.get('recall')) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">F1</div>
+            <div class="metric-value">{{ format_metric(gm.get('f1')) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">MAE</div>
+            <div class="metric-value">{{ format_metric(gm.get('mae')) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">mRR</div>
+            <div class="metric-value">{{ format_metric(gm.get('mrr')) }}</div>
+        </div>
+    </div>
+    {% else %}
+    <p class="text-muted">Global metrics not available.</p>
+    {% endif %}
+</div>
+
+<!-- ── Per-Subject Metrics ────────────────────────────────── -->
+{% if results.per_subject %}
+<div class="card">
+    <h2>Per-Subject Metrics</h2>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Subject</th>
+                <th>Precision</th>
+                <th>Recall</th>
+                <th>F1</th>
+                <th>MAE</th>
+                <th>mRR</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in results.per_subject %}
+            <tr>
+                <td><strong>{{ row.subject_id }}</strong></td>
+                <td>{{ format_metric(row.get('precision')) }}</td>
+                <td>{{ format_metric(row.get('recall')) }}</td>
+                <td>{{ format_metric(row.get('f1')) }}</td>
+                <td>{{ format_metric(row.get('mae')) }}</td>
+                <td>{{ format_metric(row.get('mrr')) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- ── Distance Transform Plots ───────────────────────────── -->
+{% set dt_plots = results.plots.get('distance_transform', []) if results.plots else [] %}
+{% if dt_plots %}
+<div class="card">
+    <h2>Distance Transform Plots</h2>
+    <div class="plot-grid">
+        {% for plot in dt_plots %}
+        <div class="plot-card">
+            <img src="{{ url_for('static', filename='plots/' + plot) }}" alt="{{ plot }}">
+            <div class="plot-caption">{{ plot }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- ── Per-Window Plots ───────────────────────────────────── -->
+{% set window_plots = results.plots.get('per_window', []) if results.plots else [] %}
+{% if window_plots %}
+<div class="card">
+    <h2>Per-Window Plots</h2>
+    <div class="plot-grid">
+        {% for plot in window_plots %}
+        <div class="plot-card">
+            <img src="{{ url_for('static', filename='plots/' + plot) }}" alt="{{ plot }}">
+            <div class="plot-caption">{{ plot }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- ── Per-Subject Plot Sections ──────────────────────────── -->
+{% set subject_plots = results.plots.get('per_subject', {}) if results.plots else {} %}
+{% if subject_plots %}
+{% for subject_id, plots in subject_plots.items() %}
+<div class="card">
+    <h2>{{ subject_id }} — Plots</h2>
+    {% if plots %}
+    <div class="plot-grid">
+        {% for plot in plots %}
+        <div class="plot-card">
+            <img src="{{ url_for('static', filename='plots/' + plot) }}" alt="{{ plot }}">
+            <div class="plot-caption">{{ plot }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted">No plots for this subject.</p>
+    {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+{% endif %}{# end if not results #}
+{% endblock %}

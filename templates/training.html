@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+{% block title %}OnlineEEG — Training{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Training</h1>
+    <p>Configure model parameters, select subjects to include, then start training.</p>
+</div>
+
+<!-- ── Section 1: Configuration ──────────────────────────── -->
+<form action="{{ url_for('training_start') }}" method="post">
+<div class="card">
+    <h2>Model Configuration</h2>
+
+    <div class="form-group">
+        <label for="model_name">Model Name</label>
+        <input type="text" id="model_name" name="model_name"
+               placeholder="e.g. eeg_model_v1" required
+               value="{{ form_values.model_name if form_values else '' }}">
+    </div>
+
+    <!-- Row 1: Channels + Overlap -->
+    <div class="form-row">
+        <div class="form-group">
+            <label for="channels">EEG Channels</label>
+            <select id="channels" name="channels">
+                <option value="64"  {% if form_values and form_values.channels == '64'  %}selected{% endif %}>64</option>
+                <option value="128" {% if form_values and form_values.channels == '128' %}selected{% endif %}>128</option>
+            </select>
+            <span class="hint">64 uses the <code>channels_64_map</code> in JSON subset.</span>
+        </div>
+        <div class="form-group">
+            <label for="overlap_percentage">Overlap [%]</label>
+            <input type="number" id="overlap_percentage" name="overlap_percentage"
+                   value="{{ form_values.overlap_percentage if form_values else '0' }}"
+                   min="0" max="99" step="5">
+            <span class="hint">Sliding-window overlap for training segments. 0 = no overlap.<br>
+                Val segments are always non-overlapping.</span>
+        </div>
+    </div>
+
+    <!-- Row 2: Butterworth + f_min + f_max -->
+    <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr;">
+        <div class="form-group">
+            <label>Butterworth Filter</label>
+            <div class="checkbox-inline">
+                <input type="checkbox" id="butterworth" name="butterworth" value="1"
+                       onchange="toggleFilterFields(this)"
+                       {% if not form_values or form_values.butterworth %}checked{% endif %}>
+                <label for="butterworth" style="font-weight:normal;">Enable bandpass filter</label>
+            </div>
+        </div>
+        <div class="form-group" id="f_min_group">
+            <label for="f_min">f_min [Hz]</label>
+            <input type="number" id="f_min" name="f_min"
+                   value="{{ form_values.f_min if form_values else '5' }}"
+                   min="0" step="0.1"
+                   {% if form_values and not form_values.butterworth %}disabled{% endif %}>
+            <span class="hint">Lower cutoff frequency.</span>
+        </div>
+        <div class="form-group" id="f_max_group">
+            <label for="f_max">f_max [Hz]</label>
+            <input type="number" id="f_max" name="f_max"
+                   value="{{ form_values.f_max if form_values else '22.5' }}"
+                   min="0" step="0.1"
+                   {% if form_values and not form_values.butterworth %}disabled{% endif %}>
+            <span class="hint">Upper cutoff frequency.</span>
+        </div>
+    </div>
+
+    <!-- ── Promoted hyperparams ────────────────────────────── -->
+    <div class="form-row">
+        <div class="form-group">
+            <label for="validation_ratio">Validation Ratio</label>
+            <input type="number" id="validation_ratio" name="validation_ratio"
+                   value="{{ form_values.validation_ratio if form_values else '0.3' }}"
+                   min="0.05" max="0.95" step="0.05">
+            <span class="hint">Fraction of subjects used for validation, rest training.</span>
+        </div>
+        <div class="form-group">
+            <label for="time_window_length">Window Length [s]</label>
+            <input type="number" id="time_window_length" name="time_window_length"
+                   value="{{ form_values.time_window_length if form_values else '10' }}"
+                   min="1" step="1">
+            <span class="hint">Duration of each EEG segment in seconds.</span>
+        </div>
+    </div>
+
+    <!-- ── JSON editor ────────────────────────────────────── -->
+    <details style="margin-top:0.5rem;">
+        <summary style="cursor:pointer; font-weight:600; color:var(--primary, #2563eb); margin-bottom:0.5rem;">JSON Hyperparameters Settings</summary>
+        <div class="form-group" style="margin-top:0.5rem;">
+            <textarea id="hyperparams" name="hyperparams" rows="20" class="json-editor">{{ form_values.hyperparams if form_values else default_hyperparams }}</textarea>
+            <span class="hint">Advanced parameters. Must be valid JSON.</span>
+        </div>
+    </details>
+
+    <!-- ── JSON reference ────────────────────────────────── -->
+    <details style="margin-top:0.5rem;">
+        <summary style="cursor:pointer; font-weight:600; color:var(--primary, #2563eb);">JSON Hyperparameters Guide</summary>
+        <div style="overflow-x:auto; margin-top:0.75rem;">
+        <table class="metrics-table" style="font-size:0.85rem;">
+            <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><th colspan="3" style="background:#f1f5f9; text-align:left; padding:4px 8px;">general</th></tr>
+                <tr><td>SEED</td><td>1234</td><td>Random seed, ensures reproducible splits and weight initialization.</td></tr>
+                <tr><td>BATCH_SIZE</td><td>32</td><td>Number of segments per training mini-batch. Larger = faster but more GPU memory.</td></tr>
+                <tr><td>NUM_EPOCHS</td><td>50</td><td>Maximum number of full passes through the training set. Early stopping may terminate sooner.</td></tr>
+
+                <tr><th colspan="3" style="background:#f1f5f9; text-align:left; padding:4px 8px;">optimization</th></tr>
+                <tr><td>LEARN_RATE</td><td>0.001</td><td>Initial learning rate for AdamW.</td></tr>
+                <tr><td>WEIGHT_DECAY</td><td>0.0001</td><td>L2 regularization coefficient in AdamW, decrease overfitting.</td></tr>
+                <tr><td>CLIP_NORM</td><td>1</td><td>Gradient clipping max norm. Set to 0 to disable. Prevents exploding gradients.</td></tr>
+
+                <tr><th colspan="3" style="background:#f1f5f9; text-align:left; padding:4px 8px;">scheduler</th></tr>
+                <tr><td>SCHED_FACTOR</td><td>0.7</td><td>LR is multiplied by this factor after SCHED_PATIENCE epochs of no val F1 improvement.</td></tr>
+                <tr><td>SCHED_PATIENCE</td><td>5</td><td>Epochs without improvement before LR is reduced by SCHED_FACTOR.</td></tr>
+
+                <tr><th colspan="3" style="background:#f1f5f9; text-align:left; padding:4px 8px;">early_stopping</th></tr>
+                <tr><td>EARLY_STOP_PATIENCE</td><td>15</td><td>Epochs without val F1 improvement before training stops.</td></tr>
+                <tr><td>MIN_EPOCH_IMPROVEMENT</td><td>3</td><td>Minimum epoch index before a checkpoint can be saved (avoids saving noisy early epochs).</td></tr>
+
+                <tr><th colspan="3" style="background:#f1f5f9; text-align:left; padding:4px 8px;">model</th></tr>
+                <tr><td>dim_feedforward</td><td>512</td><td>Hidden dimension of the Transformer FFN sublayer.</td></tr>
+                <tr><td>num_layers</td><td>8</td><td>Number of Transformer encoder layers.</td></tr>
+                <tr><td>num_heads</td><td>4</td><td>Number of attention heads. Must divide 128 (the encoder output dim).</td></tr>
+                <tr><td>drop_rate</td><td>0.1</td><td>Dropout rate applied in ResCNN blocks and positional encoding.</td></tr>
+                <tr><td>skip_type</td><td>"SE"</td><td>Skip-connection attention type: <code>"SE"</code> (Squeeze-and-Excitation), <code>"ECA"</code>, or <code>"default"</code> (no attention).</td></tr>
+                <tr><td>conv_type</td><td>"InceptionSE"</td><td>Encoder conv flavour: <code>"default"</code>, <code>"multiscale"</code>, <code>"SK"</code> (Selective Kernel), or <code>"InceptionSE"</code>.</td></tr>
+                <tr><td>skip_concat</td><td>true</td><td>If true, skip connections are concatenated (doubles channels); if false, they are added element-wise.</td></tr>
+
+                <tr><th colspan="3" style="background:#f1f5f9; text-align:left; padding:4px 8px;">evaluation</th></tr>
+                <tr><td>height_threshold</td><td>-0.4</td><td>Minimum (negative) height of a valley in the inverted distance-transform to be counted as a peak.</td></tr>
+                <tr><td>min_dist</td><td>200</td><td>Minimum sample distance between two detected peaks (prevents double-detection).</td></tr>
+                <tr><td>tol_ms</td><td>150</td><td>Tolerance in milliseconds for the discrete P/R/F1 score — a predicted peak is a TP if within this distance of a true peak.</td></tr>
+                <tr><td>prominence</td><td>0.035</td><td>Minimum prominence of a peak in the distance-transform signal.</td></tr>
+
+                <tr><th colspan="3" style="background:#f1f5f9; text-align:left; padding:4px 8px;">augmentation</th></tr>
+                <tr><td>use_augmentation</td><td>false</td><td>Enable time-warp augmentation on training segments.</td></tr>
+                <tr><td>warp_factor_range_min/max</td><td>0.85 / 1.15</td><td>Range for random time-stretch factor applied to each segment.</td></tr>
+                <tr><td>n_augmented_per_segment</td><td>5</td><td>Number of augmented copies generated per original segment.</td></tr>
+
+                <tr><th colspan="3" style="background:#f1f5f9; text-align:left; padding:4px 8px;">channels_64_map</th></tr>
+                <tr><td>channels_64_map</td><td>[…64 labels…]</td><td>Ordered list of EEG electrode labels to keep when "64 channels" is selected. Uses 0-based index derived from label number (E54 → index 53) [In default settings E54 is the ref].</td></tr>
+            </tbody>
+        </table>
+        </div>
+    </details>
+</div>
+
+<!-- ── Section 2: Subject Exclusion ──────────────────────── -->
+<div class="card">
+    <h2>Subject Exclusion</h2>
+    <p class="text-muted" style="margin-bottom:0.75rem;">
+        Check the subjects you want to <strong>exclude</strong> from training. Leave all unchecked to train on all subjects.
+    </p>
+
+    {% if subjects %}
+    <div class="form-group">
+        <div class="checkbox-grid">
+            {% for subject in subjects %}
+            <label class="checkbox-label">
+                <input type="checkbox" name="excluded_subjects" value="{{ subject }}"
+                       {% if form_values and subject in form_values.get('excluded_subjects', []) %}checked{% endif %}>
+                {{ subject }}
+            </label>
+            {% endfor %}
+        </div>
+        <span class="hint mt-1">{{ subjects | length }} subject(s) available.</span>
+    </div>
+    {% else %}
+    <p class="text-muted">No subjects available. <a href="{{ url_for('upload') }}">Upload training data</a> first.</p>
+    {% endif %}
+</div>
+
+<!-- ── Section 3: Training Actions ───────────────────────── -->
+<div class="card">
+    <h2>Training Actions</h2>
+    <div class="btn-group">
+        <button type="submit" class="btn btn-primary">Start Training</button>
+    </div>
+</div>
+</form>
+
+<!-- Save / Download — separate form so it doesn't re-trigger training -->
+<div class="card">
+    <h2>Save / Download Model</h2>
+    <p class="text-muted" style="margin-bottom:0.75rem;">
+        Save the currently trained model to disk for later use in inference, or download the checkpoint file.
+    </p>
+    <form action="{{ url_for('training_save') }}" method="post">
+        <div class="form-group">
+            <label for="save_model_name">Model Name</label>
+            <input type="text" id="save_model_name" name="model_name"
+                   placeholder="e.g. eeg_model_v1" required
+                   value="{{ last_model_name or '' }}">
+        </div>
+        <div class="btn-group">
+            <button type="submit" class="btn btn-success">Save Model</button>
+            <a href="{{ url_for('training_download') }}" class="btn btn-primary">Download Checkpoint (.pt)</a>
+        </div>
+    </form>
+</div>
+
+<!-- ── Section 4: Output ──────────────────────────────────── -->
+<div class="card">
+    <h2>Training Output</h2>
+    <p id="training-status" class="text-muted" style="margin-bottom:0.75rem;">
+        {{ training_status if training_status else 'No training run yet.' }}
+    </p>
+    <pre id="log-panel" class="log-panel" style="min-height:80px;">{{ training_logs }}</pre>
+</div>
+
+<div class="card" id="metrics-card" style="{{ '' if training_metrics else 'display:none' }}">
+    <h2>Training Metrics</h2>
+    <table class="metrics-table">
+        <tbody id="metrics-tbody">
+            {% if training_metrics %}
+            {% for key, value in training_metrics.items() %}
+            <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
+            {% endfor %}
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card" id="plot-card" style="{{ '' if training_plot else 'display:none' }}">
+    <h2>Training Curves</h2>
+    <img id="training-plot-img"
+         src="{{ url_for('static', filename='plots/' + training_plot) if training_plot else '' }}"
+         alt="Training curves" style="max-width:100%; height:auto;">
+</div>
+
+<script>
+function toggleFilterFields(checkbox) {
+    var enabled = checkbox.checked;
+    ['f_min', 'f_max'].forEach(function(id) {
+        var input = document.getElementById(id);
+        var group = document.getElementById(id + '_group');
+        input.disabled = !enabled;
+        group.style.opacity = enabled ? '' : '0.45';
+    });
+}
+
+(function () {
+    var logPanel  = document.getElementById('log-panel');
+    var statusEl  = document.getElementById('training-status');
+    var pollTimer = null;
+
+    function poll() {
+        fetch('{{ url_for("training_status_api") }}')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.logs !== undefined) {
+                    // Only auto-scroll if the user is already near the bottom
+                    var atBottom = logPanel.scrollHeight - logPanel.scrollTop - logPanel.clientHeight < 60;
+                    logPanel.textContent = data.logs;
+                    if (atBottom) logPanel.scrollTop = logPanel.scrollHeight;
+                }
+                if (data.status) {
+                    statusEl.textContent = data.status;
+                }
+                if (data.metrics) {
+                    var tbody = document.getElementById('metrics-tbody');
+                    tbody.innerHTML = '';
+                    for (var key in data.metrics) {
+                        var tr = document.createElement('tr');
+                        tr.innerHTML = '<th>' + key + '</th><td>' + data.metrics[key] + '</td>';
+                        tbody.appendChild(tr);
+                    }
+                    document.getElementById('metrics-card').style.display = '';
+                }
+                if (data.plot) {
+                    var plotImg = document.getElementById('training-plot-img');
+                    plotImg.src = '/static/plots/' + data.plot + '?t=' + Date.now();
+                    document.getElementById('plot-card').style.display = '';
+                }
+                if (!data.running) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+            })
+            .catch(function() { /* ignore fetch errors during polling */ });
+    }
+
+    {% if training_running %}
+    pollTimer = setInterval(poll, 1000);
+    {% endif %}
+})();
+</script>
+{% endblock %}

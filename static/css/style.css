@@ -1,0 +1,341 @@
+/* ── Reset & base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    color: #222;
+    background: #f5f6f8;
+}
+
+/* ── Layout ───────────────────────────────────────────────── */
+.container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+}
+
+/* ── Navigation ───────────────────────────────────────────── */
+nav {
+    background: #2c3e50;
+    padding: 0 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.nav-brand {
+    color: #ecf0f1;
+    font-size: 1.15rem;
+    font-weight: 700;
+    padding: 0.9rem 0;
+    letter-spacing: 0.03em;
+}
+
+nav ul {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+}
+
+nav ul li a,
+nav ul li button.nav-link {
+    display: block;
+    padding: 0.9rem 1rem;
+    color: #bdc3c7;
+    text-decoration: none;
+    font-size: 0.9rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.9rem;
+    transition: color 0.15s, background 0.15s;
+}
+
+nav ul li a:hover,
+nav ul li button.nav-link:hover { color: #fff; background: rgba(255,255,255,0.07); }
+nav ul li a.active { color: #fff; border-bottom: 2px solid #3498db; }
+
+.nav-reset { color: #e74c3c !important; }
+.nav-reset:hover { background: rgba(231,76,60,0.12) !important; }
+
+/* ── Flash messages ───────────────────────────────────────── */
+.flash-container { margin-bottom: 1.5rem; }
+
+.flash {
+    padding: 0.75rem 1.1rem;
+    border-radius: 4px;
+    border-left: 4px solid;
+    margin-bottom: 0.6rem;
+    font-size: 0.93rem;
+}
+
+.flash-success { background: #eafaf1; border-color: #27ae60; color: #1e8449; }
+.flash-error   { background: #fdedec; border-color: #e74c3c; color: #c0392b; }
+.flash-info    { background: #eaf4fb; border-color: #3498db; color: #1a6fa0; }
+
+/* ── Cards ────────────────────────────────────────────────── */
+.card {
+    background: #fff;
+    border: 1px solid #dde1e7;
+    border-radius: 6px;
+    padding: 1.5rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.card h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem; color: #2c3e50; }
+.card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; color: #34495e; }
+
+/* ── Page header ──────────────────────────────────────────── */
+.page-header { margin-bottom: 1.75rem; }
+.page-header h1 { font-size: 1.6rem; font-weight: 700; color: #2c3e50; margin-bottom: 0.3rem; }
+.page-header p  { color: #666; }
+
+/* ── Forms ────────────────────────────────────────────────── */
+.form-group { margin-bottom: 1.1rem; }
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+    font-size: 0.9rem;
+    color: #34495e;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group input[type="file"],
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid #ccd0d5;
+    border-radius: 4px;
+    font-size: 0.93rem;
+    font-family: inherit;
+    color: #222;
+    background: #fff;
+    transition: border-color 0.15s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52,152,219,0.15);
+}
+
+.form-group .hint { font-size: 0.82rem; color: #888; margin-top: 0.25rem; }
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.checkbox-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0;
+}
+
+.checkbox-inline input[type="checkbox"] { width: auto; margin: 0; }
+
+/* ── JSON editor ──────────────────────────────────────────── */
+.json-editor {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace !important;
+    font-size: 0.85rem !important;
+    background: #fafafa !important;
+    resize: vertical;
+}
+
+/* ── Buttons ──────────────────────────────────────────────── */
+.btn {
+    display: inline-block;
+    padding: 0.5rem 1.25rem;
+    border-radius: 4px;
+    border: none;
+    font-size: 0.93rem;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: opacity 0.15s, filter 0.15s;
+}
+
+.btn:hover { filter: brightness(0.92); }
+.btn-primary { background: #3498db; color: #fff; }
+.btn-success { background: #27ae60; color: #fff; }
+.btn-danger  { background: #e74c3c; color: #fff; }
+.btn-secondary { background: #95a5a6; color: #fff; }
+
+.btn-group { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.5rem; }
+
+/* ── Log panel ────────────────────────────────────────────── */
+.log-panel {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 1rem;
+    max-height: 380px;
+    overflow-y: auto;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 0.83rem;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* ── Subject checkbox grid ────────────────────────────────── */
+.checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 0.4rem;
+    max-height: 260px;
+    overflow-y: auto;
+    border: 1px solid #dde1e7;
+    border-radius: 4px;
+    padding: 0.75rem;
+    background: #fafafa;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.88rem;
+    cursor: pointer;
+    padding: 0.15rem 0;
+}
+
+.checkbox-label input[type="checkbox"] { margin: 0; cursor: pointer; }
+
+/* ── Metrics table ────────────────────────────────────────── */
+.metrics-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.metrics-table th,
+.metrics-table td {
+    padding: 0.55rem 0.85rem;
+    border: 1px solid #dde1e7;
+    text-align: left;
+}
+
+.metrics-table th { background: #f0f3f7; font-weight: 600; color: #34495e; }
+.metrics-table tr:nth-child(even) td { background: #f9fafb; }
+
+/* ── Metric cards (global metrics) ───────────────────────── */
+.metric-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.metric-card {
+    background: #f0f3f7;
+    border-radius: 6px;
+    padding: 1rem;
+    text-align: center;
+    border: 1px solid #dde1e7;
+}
+
+.metric-card .metric-label { font-size: 0.8rem; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.metric-card .metric-value { font-size: 1.5rem; font-weight: 700; color: #2c3e50; margin-top: 0.25rem; }
+
+/* ── Plot gallery ─────────────────────────────────────────── */
+.plot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+}
+
+.plot-card {
+    border: 1px solid #dde1e7;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.plot-card img { width: 100%; display: block; }
+.plot-card .plot-caption { padding: 0.5rem 0.75rem; font-size: 0.82rem; color: #666; text-align: center; }
+
+/* ── Home nav cards ───────────────────────────────────────── */
+.nav-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.nav-card {
+    background: #fff;
+    border: 1px solid #dde1e7;
+    border-radius: 6px;
+    padding: 1.5rem 1.25rem;
+    text-align: center;
+    text-decoration: none;
+    color: #2c3e50;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    transition: box-shadow 0.15s, transform 0.15s;
+    display: block;
+}
+
+.nav-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); transform: translateY(-2px); }
+.nav-card .nav-card-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+.nav-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.3rem; }
+.nav-card p  { font-size: 0.83rem; color: #777; }
+
+/* ── Utility ──────────────────────────────────────────────── */
+.text-muted { color: #888; font-size: 0.9rem; }
+.mt-1 { margin-top: 0.5rem; }
+.mt-2 { margin-top: 1rem; }
+.mt-3 { margin-top: 1.5rem; }
+.section-divider { border: none; border-top: 1px solid #eee; margin: 1.5rem 0; }
+
+/* ── Window navigator ─────────────────────────────────────── */
+.window-nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    justify-content: center;
+    margin-bottom: 1rem;
+}
+
+.window-nav span {
+    font-weight: 600;
+    font-size: 0.9rem;
+    min-width: 130px;
+    text-align: center;
+    color: #444;
+}
+
+.btn-sm {
+    padding: 0.3rem 0.9rem;
+    font-size: 0.85rem;
+}
+
+.plot-loading {
+    opacity: 0.4;
+    transition: opacity 0.2s;
+}
+
+/* ── Confirmation box ─────────────────────────────────────── */
+.confirm-box {
+    background: #fff8f8;
+    border: 1px solid #f5c6cb;
+    border-radius: 6px;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.confirm-box p { margin-bottom: 1rem; color: #555; }

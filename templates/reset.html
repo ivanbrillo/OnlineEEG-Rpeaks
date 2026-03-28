@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}OnlineEEG — Reset Dataset{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Reset Dataset</h1>
+</div>
+
+<div class="card">
+    <div class="confirm-box">
+        <p>
+            <strong>Warning:</strong> This will permanently delete all uploaded training data and cached subject records.
+            Saved models are not affected. This action cannot be undone.
+        </p>
+        <form action="{{ url_for('reset') }}" method="post">
+            <div class="btn-group" style="justify-content:center">
+                <button type="submit" class="btn btn-danger">Confirm Reset</button>
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
