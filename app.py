@@ -1,9 +1,11 @@
 import os
+import io
 import json
 import tempfile
 import threading
 import traceback
 import zipfile
+from datetime import datetime, timezone
 
 from flask import Flask, render_template, request, flash, redirect, url_for, jsonify, send_file
 from werkzeug.utils import secure_filename
@@ -11,7 +13,7 @@ from werkzeug.utils import secure_filename
 from callbacks.preprocessing import handle_training_upload, get_saved_subjects, reset_dataset
 from callbacks.training import start_training
 from callbacks.model import save_trained_model, list_available_models
-from callbacks.inference import run_inference, generate_window_plot, recompute_metrics
+from callbacks.inference import run_inference, generate_window_plot, recompute_metrics, build_inference_export
 from callbacks.results import get_results
 from utils.ui_helpers import allowed_file, allowed_model_file, format_metric, safe_json_parse
 
@@ -19,7 +21,7 @@ from utils.ui_helpers import allowed_file, allowed_model_file, format_metric, sa
 
 app = Flask(__name__)
 app.secret_key = "dev-secret-key-change-in-production"
-app.config["MAX_CONTENT_LENGTH"] = 1000 * 1024 * 1024  # 1GB upload limit
+app.config["MAX_CONTENT_LENGTH"] = 10000 * 1024 * 1024  # 10GB upload limit
 
 # Use the OS temp directory so uploaded files never land inside the project
 # folder, which would trigger Flask's file watcher and restart the server.
@@ -40,6 +42,8 @@ _state = {
     "inference_summary": None,
     "inference_plot_files": [],
     "inference_results": None,
+    "training_form_values": None,
+    "inference_form_values": None,
 }
 _state_lock = threading.Lock()
 
@@ -196,6 +200,8 @@ def training():
     except Exception as e:
         flash(f"Could not load subjects: {e}", "error")
 
+    form_values = _state.get("training_form_values")
+
     return render_template(
         "training.html",
         subjects=subjects,
@@ -206,7 +212,7 @@ def training():
         training_metrics=_state["training_metrics"],
         training_plot=_state["training_plot"],
         last_model_name=_state["last_model_name"],
-        form_values=None,
+        form_values=form_values,
     )
 
 
@@ -229,6 +235,20 @@ def training_start():
     if _state["training_running"]:
         flash("Training is already running.", "info")
         return redirect(url_for("training"))
+
+    form_values = {
+        "model_name": request.form.get("model_name", "").strip(),
+        "channels": request.form.get("channels", "64"),
+        "overlap_percentage": request.form.get("overlap_percentage", "0"),
+        "butterworth": bool(request.form.get("butterworth")),
+        "f_min": request.form.get("f_min", "5"),
+        "f_max": request.form.get("f_max", "22.5"),
+        "validation_ratio": request.form.get("validation_ratio", "0.3"),
+        "time_window_length": request.form.get("time_window_length", "10"),
+        "hyperparams": request.form.get("hyperparams", "{}"),
+        "excluded_subjects": request.form.getlist("excluded_subjects"),
+    }
+    _state["training_form_values"] = form_values
 
     model_name = request.form.get("model_name", "").strip()
     if not model_name:
@@ -304,7 +324,7 @@ def training_save():
 
 # ── Inference ──────────────────────────────────────────────────────────────────
 
-def _run_inference_thread(model_id, zip_path):
+def _run_inference_thread(model_id, zip_path=None, included_subjects=None):
     """Background thread that runs run_inference and streams logs via log_fn."""
     with _state_lock:
         _state["inference_running"] = True
@@ -318,7 +338,12 @@ def _run_inference_thread(model_id, zip_path):
             _state["inference_logs"] += line + "\n"
 
     try:
-        result = run_inference(model_id, zip_path, log_fn=log_fn)
+        result = run_inference(
+            model_id,
+            zip_path=zip_path,
+            included_subjects=included_subjects,
+            log_fn=log_fn,
+        )
         with _state_lock:
             _state["inference_status"] = result.get("status", "complete")
             _state["inference_summary"] = result.get("summary")
@@ -350,6 +375,7 @@ def inference_status_api():
 @app.route("/inference", methods=["GET", "POST"])
 def inference():
     models = []
+    subjects = []
     try:
         models = list_available_models()
     except NotImplementedError:
@@ -357,14 +383,31 @@ def inference():
     except Exception as e:
         flash(f"Could not load models: {e}", "error")
 
+    try:
+        subjects = get_saved_subjects()
+    except NotImplementedError:
+        pass
+    except Exception as e:
+        flash(f"Could not load subjects: {e}", "error")
+
+    form_values = _state.get("inference_form_values") or {}
+
     if request.method == "POST":
         if _state["inference_running"]:
             flash("Inference is already running.", "info")
             return redirect(url_for("inference"))
 
         model_id = request.form.get("model_id", "").strip()
+        data_source = request.form.get("data_source", "zip").strip().lower()
         pt_file = request.files.get("pt_file")
         zip_file = request.files.get("zip_file")
+        included_subjects = request.form.getlist("included_subjects")
+
+        _state["inference_form_values"] = {
+            "model_id": model_id,
+            "data_source": data_source,
+            "included_subjects": included_subjects,
+        }
 
         # Resolve model source: uploaded .pt takes priority over dropdown
         if pt_file and pt_file.filename:
@@ -379,18 +422,28 @@ def inference():
             flash("Please select a saved model or upload a .pt file.", "error")
             return redirect(url_for("inference"))
 
-        if not zip_file or zip_file.filename == "":
-            flash("No ZIP file selected.", "error")
-            return redirect(url_for("inference"))
-        if not allowed_file(zip_file.filename):
-            flash("Invalid file type. Please upload a .zip archive.", "error")
-            return redirect(url_for("inference"))
+        zip_path = None
+        if data_source == "cached":
+            if not included_subjects:
+                flash("Select at least one cached subject or switch to ZIP upload.", "error")
+                return redirect(url_for("inference"))
+        else:
+            if not zip_file or zip_file.filename == "":
+                flash("No ZIP file selected.", "error")
+                return redirect(url_for("inference"))
+            if not allowed_file(zip_file.filename):
+                flash("Invalid file type. Please upload a .zip archive.", "error")
+                return redirect(url_for("inference"))
 
-        filename = secure_filename(zip_file.filename)
-        zip_path = os.path.join(UPLOAD_FOLDER, filename)
-        zip_file.save(zip_path)
+            filename = secure_filename(zip_file.filename)
+            zip_path = os.path.join(UPLOAD_FOLDER, filename)
+            zip_file.save(zip_path)
 
-        t = threading.Thread(target=_run_inference_thread, args=(model_id, zip_path), daemon=True)
+        t = threading.Thread(
+            target=_run_inference_thread,
+            args=(model_id, zip_path, included_subjects if data_source == "cached" else None),
+            daemon=True,
+        )
         t.start()
 
         flash("Inference started. Logs will update below.", "info")
@@ -408,6 +461,8 @@ def inference():
     return render_template(
         "inference.html",
         models=models,
+        subjects=subjects,
+        inference_form_values=form_values,
         inference_logs=_state["inference_logs"],
         inference_status=_state["inference_status"],
         inference_running=_state["inference_running"],
@@ -449,6 +504,32 @@ def inference_recompute():
     except Exception as e:
         flash(f"Recompute error: {e}", "error")
     return redirect(url_for("inference"))
+
+
+@app.route("/inference/export/json")
+def inference_export_json():
+    """Download a JSON export with per-subject and per-segment inference details."""
+    try:
+        payload = build_inference_export()
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(url_for("inference"))
+    except Exception as e:
+        flash(f"Export error: {e}", "error")
+        return redirect(url_for("inference"))
+
+    payload["generated_at_utc"] = datetime.now(timezone.utc).isoformat()
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    out_name = f"inference_export_{ts}.json"
+    out_bytes = json.dumps(payload, indent=2).encode("utf-8")
+
+    return send_file(
+        io.BytesIO(out_bytes),
+        mimetype="application/json",
+        as_attachment=True,
+        download_name=out_name,
+    )
 
 
 # ── Reset ──────────────────────────────────────────────────────────────────────

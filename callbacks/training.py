@@ -42,6 +42,15 @@ _CHANNELS_64 = [
 _CHANNEL_64_INDICES = [int(ch[1:]) - 1 for ch in _CHANNELS_64]
 
 
+def _summarize_subject_channel_counts(data, subject_ids):
+    """Return {channel_count: [subject_ids]} for the provided subjects."""
+    counts = {}
+    for sid in subject_ids:
+        n_ch = int(np.asarray(data[sid]["EEG"]).shape[0])
+        counts.setdefault(n_ch, []).append(sid)
+    return counts
+
+
 def _make_dataset(subjects, data, seg_len, stage, aug_params, log_fn=None):
     """Process subjects into a TensorDataset."""
     if log_fn:
@@ -189,15 +198,54 @@ def start_training(config, excluded_subjects, log_fn=None):
     _log(f"Window: {time_window_length}s = {seg_len} samples, stride: {train_stride}")
 
     # ── Channel selection ─────────────────────────────────────────────────────
+    if n_channels_requested not in (64, 128):
+        raise ValueError(f"Unsupported channel selection: {n_channels_requested}. Use 64 or 128.")
+
+    channel_counts = _summarize_subject_channel_counts(data, usable)
+
     if n_channels_requested == 64:
         ch_map = hp.get("channels_64_map", _CHANNELS_64)
         ch_indices = [int(ch[1:]) - 1 for ch in ch_map]
-        _log(f"Applying 64-channel selection ({len(ch_indices)} channels)...")
-        for sid in all_subjects:
-            data[sid]["EEG"] = data[sid]["EEG"][ch_indices, :]
-        n_channels = len(ch_indices)
+
+        _log(f"Requested 64 channels. Subject channel distribution: {channel_counts}")
+        mapped_subjects = []
+        unchanged_subjects = []
+
+        for sid in usable:
+            subj_eeg = np.asarray(data[sid]["EEG"])
+            subj_channels = int(subj_eeg.shape[0])
+
+            if subj_channels == 128:
+                if max(ch_indices, default=-1) >= subj_channels:
+                    raise ValueError(
+                        f"64-channel map references channel index {max(ch_indices)} but subject P{sid:03d} has only {subj_channels} channels."
+                    )
+                data[sid]["EEG"] = subj_eeg[ch_indices, :]
+                mapped_subjects.append(f"P{sid:03d}")
+            elif subj_channels == 64:
+                unchanged_subjects.append(f"P{sid:03d}")
+            else:
+                raise ValueError(
+                    f"Subject P{sid:03d} has {subj_channels} EEG channels. Expected 64 or 128 for 64-channel training mode."
+                )
+
+        _log(f"Applied 128->64 mapping to {len(mapped_subjects)} subject(s).")
+        _log(f"Kept native 64-channel data for {len(unchanged_subjects)} subject(s).")
+        n_channels = 64
     else:
-        n_channels = data[all_subjects[0]]["EEG"].shape[0]
+        invalid = []
+        for sid in usable:
+            subj_channels = int(np.asarray(data[sid]["EEG"]).shape[0])
+            if subj_channels != 128:
+                invalid.append((sid, subj_channels))
+
+        if invalid:
+            details = ", ".join(f"P{sid:03d}={count}ch" for sid, count in invalid)
+            raise ValueError(
+                "128-channel training mode requires all usable subjects to have 128 channels. "
+                f"Found: {details}."
+            )
+        n_channels = 128
     _log(f"EEG channels: {n_channels}")
 
     # ── Bandpass filter (lowcut/highcut come from UI fields f_min/f_max) ──────

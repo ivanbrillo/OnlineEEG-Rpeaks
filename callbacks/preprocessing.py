@@ -143,6 +143,30 @@ def get_saved_subjects():
     return sorted(cache.keys())
 
 
+def get_saved_subject_data(subject_ids=None):
+    """
+    Return cached subject payloads for the requested IDs.
+
+    Args:
+        subject_ids (list[str] | None): Subject IDs to include. If None,
+            returns all cached subjects.
+
+    Returns:
+        dict[str, dict]: Subject data dict in the same format stored in cache.
+    """
+    cache = _load_cache()
+
+    if subject_ids is None:
+        return {sid: cache[sid] for sid in sorted(cache.keys())}
+
+    requested = [sid.upper() for sid in subject_ids]
+    missing = [sid for sid in requested if sid not in cache]
+    if missing:
+        raise ValueError(f"Unknown subject(s) in dataset: {', '.join(sorted(set(missing)))}")
+
+    return {sid: cache[sid] for sid in sorted(set(requested))}
+
+
 def reset_dataset():
     """
     Delete the parsed-data cache, clearing all subjects from the dataset.

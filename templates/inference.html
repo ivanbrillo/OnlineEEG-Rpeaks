@@ -2,9 +2,13 @@
 {% block title %}OnlineEEG — Inference &amp; Results{% endblock %}
 
 {% block content %}
+{% set iv = inference_form_values or {} %}
+{% set selected_model_id = iv.get('model_id', '') %}
+{% set selected_data_source = iv.get('data_source', 'zip') %}
+{% set selected_subjects = iv.get('included_subjects', []) %}
 <div class="page-header">
     <h1>Inference &amp; Results</h1>
-    <p>Select a saved model and upload evaluation subjects to run inference. Results appear below once complete.</p>
+    <p>Select a saved model and either upload a new evaluation ZIP or include subjects from the cached dataset. Results appear below once complete.</p>
 </div>
 
 <!-- ── Run Inference Form ─────────────────────────────────── -->
@@ -15,9 +19,9 @@
         <div class="form-group">
             <label for="model_id">Saved Model</label>
             <select id="model_id" name="model_id">
-                <option value="" disabled selected>— Select a model —</option>
+                <option value="" disabled {{ 'selected' if not selected_model_id else '' }}>— Select a model —</option>
                 {% for model in models %}
-                <option value="{{ model.id }}">{{ model.name }}{% if model.saved_at %} ({{ model.saved_at[:19]|replace('T', ' ') }}){% endif %}</option>
+                <option value="{{ model.id }}" {{ 'selected' if selected_model_id == model.id else '' }}>{{ model.name }}{% if model.saved_at %} ({{ model.saved_at[:19]|replace('T', ' ') }}){% endif %}</option>
                 {% endfor %}
             </select>
             {% if not models %}
@@ -32,13 +36,55 @@
         </div>
 
         <div class="form-group">
+            <label>Evaluation Data Source</label>
+            <div class="source-choice-grid">
+                <label class="source-choice-option">
+                    <input type="radio" name="data_source" value="zip" {{ 'checked' if selected_data_source != 'cached' else '' }}>
+                    <span>Upload new ZIP</span>
+                </label>
+                <label class="source-choice-option">
+                    <input type="radio" name="data_source" value="cached" {{ 'checked' if selected_data_source == 'cached' else '' }}>
+                    <span>Include subjects from cached dataset (.pkl)</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="form-group" id="zip-source-group">
             <label for="zip_file">Evaluation Data (ZIP)</label>
-            <input type="file" id="zip_file" name="zip_file" accept=".zip" required>
+            <input type="file" id="zip_file" name="zip_file" accept=".zip">
             <span class="hint">ZIP must contain <code>P###_EEG.mat</code> files. <code>P###_ECG.mat</code> files are optional — if provided, ground-truth metrics and ECG overlay plots are computed. Evaluation subjects are not added to the training dataset.</span>
+        </div>
+
+        <div class="form-group" id="cached-source-group" style="display:none;">
+            <label>Include Subjects From Cached Dataset</label>
+            {% if subjects %}
+            <div class="checkbox-grid">
+                {% for subject in subjects %}
+                <label class="checkbox-label">
+                    <input type="checkbox" name="included_subjects" value="{{ subject }}" {{ 'checked' if subject in selected_subjects else '' }}>
+                    {{ subject }}
+                </label>
+                {% endfor %}
+            </div>
+            <span class="hint mt-1">{{ subjects | length }} cached subject(s) available in <code>data/data_parsed.pkl</code>.</span>
+            {% else %}
+            <p class="text-muted">No cached subjects available. <a href="{{ url_for('upload') }}">Upload training data</a> first or switch to ZIP mode.</p>
+            {% endif %}
         </div>
 
         <div class="btn-group">
             <button type="submit" class="btn btn-primary" id="run-btn">Run Inference</button>
+        </div>
+
+        <div class="upload-progress" id="inference-upload-progress" style="display:none;">
+            <div class="upload-progress-head">
+                <span id="inference-upload-status">Preparing upload...</span>
+                <span id="inference-upload-percent">0%</span>
+            </div>
+            <div class="upload-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Inference upload progress">
+                <div class="upload-progress-fill" id="inference-upload-fill"></div>
+            </div>
+            <div class="hint" id="inference-upload-detail">Large ZIP/model uploads may take several minutes.</div>
         </div>
     </form>
 </div>
@@ -72,6 +118,72 @@
     <p class="text-muted">No results available yet. Run inference above to generate results.</p>
 </div>
 {% else %}
+
+<!-- ── JSON Export ─────────────────────────────────────────── -->
+<div class="card">
+        <h2>Download Inference JSON</h2>
+        <p class="text-muted" style="margin-bottom:0.75rem;">
+                Export all subjects with per-segment predicted R peaks (in seconds from segment start). If ECG was provided, the file also includes true R peaks and metrics at subject and segment level.
+        </p>
+        <div class="btn-group" style="margin-bottom:0.75rem;">
+                <a class="btn btn-secondary" href="{{ url_for('inference_export_json') }}">Download JSON Dictionary</a>
+        </div>
+        <details style="margin-top:0.5rem;">
+            <summary style="cursor:pointer; font-weight:600;">JSON structure (click to expand)</summary>
+            <pre class="json-editor" style="white-space:pre-wrap; margin-top:0.75rem;">{
+    "generated_at_utc": "2026-03-29T12:34:56+00:00",
+    "format_version": "1.0",
+    "eval_params": {
+        "height_threshold": -0.4,
+        "min_dist": 200,
+        "tol_ms": 150,
+        "prominence": 0.035,
+        "fs_hz": 500.0,
+        "window_length_samples": 5000,
+        "window_length_seconds": 10.0
+    },
+    "subjects": [
+        {
+            "subject_id": "P001",
+            "segment_length": {
+                "samples": 5000,
+                "seconds": 10.0
+            },
+            "subject_metrics": {
+                "mae_s": 0.013,
+                "precision": 0.94,
+                "recall": 0.92,
+                "f1": 0.93,
+                "mrr_error_percent": 2.3,
+                "prr50_error_percent": 1.9,
+                "sdrr_error_percent": 4.2,
+                "rmssd_error_percent": 5.1
+            },
+            "segments": [
+                {
+                    "segment_index": 0,
+                    "predicted_r_peaks_s": [0.42, 1.22, 2.01],
+                    "true_r_peaks_s": [0.41, 1.23, 2.0],
+                    "segment_metrics": {
+                        "mae_s": 0.01,
+                        "precision": 1.0,
+                        "recall": 1.0,
+                        "f1": 1.0,
+                        "mrr_error_percent": 1.4,
+                        "prr50_error_percent": 1.1,
+                        "sdrr_error_percent": 2.8,
+                        "rmssd_error_percent": 3.0
+                    }
+                }
+            ]
+        }
+    ]
+}</pre>
+        </details>
+        <p class="text-muted" style="margin-top:0.5rem; margin-bottom:0;">
+                For EEG-only subjects, <code>subject_metrics</code>, <code>true_r_peaks_s</code>, and <code>segment_metrics</code> are set to <code>null</code> or omitted where not applicable.
+        </p>
+</div>
 
 <!-- ── Evaluation Hyperparameters ────────────────────────── -->
 {% if results.global_metrics is not none %}
@@ -274,7 +386,89 @@
     var statusEl    = document.getElementById("inference-status-text");
     var outputCard  = document.getElementById("inference-output-card");
     var runBtn      = document.getElementById("run-btn");
+    var formEl      = document.getElementById("inference-form");
+    var zipInput    = document.getElementById("zip_file");
+    var zipGroup    = document.getElementById("zip-source-group");
+    var cachedGroup = document.getElementById("cached-source-group");
+    var sourceInputs = document.querySelectorAll('input[name="data_source"]');
+    var uploadWrap  = document.getElementById("inference-upload-progress");
+    var uploadTrack = uploadWrap ? uploadWrap.querySelector(".upload-progress-track") : null;
+    var uploadFill  = document.getElementById("inference-upload-fill");
+    var uploadText  = document.getElementById("inference-upload-status");
+    var uploadPct   = document.getElementById("inference-upload-percent");
+    var uploadDetail = document.getElementById("inference-upload-detail");
+    var uploadWaitingTimer = null;
+    var uploadProgressValue = 0;
     var pollTimer   = null;
+
+    function getDataSource() {
+        var selected = document.querySelector('input[name="data_source"]:checked');
+        return selected ? selected.value : "zip";
+    }
+
+    function updateDataSourceUI() {
+        var mode = getDataSource();
+        var useZip = mode === "zip";
+
+        if (zipGroup) {
+            zipGroup.style.display = useZip ? "" : "none";
+        }
+        if (cachedGroup) {
+            cachedGroup.style.display = useZip ? "none" : "";
+        }
+
+        if (zipInput) {
+            if (useZip) {
+                zipInput.setAttribute("required", "required");
+                zipInput.disabled = false;
+            } else {
+                zipInput.removeAttribute("required");
+                zipInput.disabled = true;
+                zipInput.value = "";
+            }
+        }
+    }
+
+    if (sourceInputs && sourceInputs.length > 0) {
+        sourceInputs.forEach(function (input) {
+            input.addEventListener("change", updateDataSourceUI);
+        });
+    }
+    updateDataSourceUI();
+
+    function setUploadProgress(value, statusText, detailText) {
+        if (!uploadFill || !uploadTrack) {
+            return;
+        }
+        uploadProgressValue = Math.max(0, Math.min(100, value));
+        uploadFill.style.width = uploadProgressValue + "%";
+        uploadTrack.setAttribute("aria-valuenow", String(uploadProgressValue));
+        if (uploadPct) {
+            uploadPct.textContent = Math.round(uploadProgressValue) + "%";
+        }
+        if (statusText && uploadText) {
+            uploadText.textContent = statusText;
+        }
+        if (detailText && uploadDetail) {
+            uploadDetail.textContent = detailText;
+        }
+    }
+
+    function startUploadWaitingTick() {
+        stopUploadWaitingTick();
+        uploadWaitingTimer = setInterval(function () {
+            if (uploadProgressValue < 95) {
+                setUploadProgress(uploadProgressValue + 1, "Upload complete, server processing...", "The server is validating files and starting inference.");
+            }
+        }, 850);
+    }
+
+    function stopUploadWaitingTick() {
+        if (uploadWaitingTimer) {
+            clearInterval(uploadWaitingTimer);
+            uploadWaitingTimer = null;
+        }
+    }
 
     function pollInference() {
         fetch('{{ url_for("inference_status_api") }}')
@@ -307,6 +501,70 @@
     if (runBtn) { runBtn.disabled = true; runBtn.textContent = "Running..."; }
     pollTimer = setInterval(pollInference, 1000);
     {% endif %}
+
+    if (formEl && window.XMLHttpRequest && uploadWrap && uploadTrack && uploadFill && runBtn) {
+        formEl.addEventListener("submit", function (evt) {
+            var mode = getDataSource();
+            if (mode !== "zip") {
+                return;
+            }
+
+            if (!zipInput || !zipInput.files || zipInput.files.length === 0) {
+                return;
+            }
+
+            evt.preventDefault();
+
+            var xhr = new XMLHttpRequest();
+            var formData = new FormData(formEl);
+
+            uploadWrap.style.display = "block";
+            runBtn.disabled = true;
+            runBtn.textContent = "Uploading...";
+            setUploadProgress(0, "Starting upload...", "Large ZIP/model uploads may take several minutes.");
+
+            xhr.open("POST", formEl.action, true);
+
+            xhr.upload.addEventListener("progress", function (event) {
+                if (!event.lengthComputable || event.total <= 0) {
+                    return;
+                }
+                var uploadRatio = event.loaded / event.total;
+                var visualPercent = Math.min(90, Math.floor(uploadRatio * 90));
+                setUploadProgress(visualPercent, "Uploading files...", "Uploading " + (event.loaded / (1024 * 1024)).toFixed(1) + " MB of " + (event.total / (1024 * 1024)).toFixed(1) + " MB");
+                if (uploadRatio >= 1) {
+                    setUploadProgress(92, "Upload complete, server processing...", "The server is validating files and starting inference.");
+                    startUploadWaitingTick();
+                }
+            });
+
+            xhr.onload = function () {
+                stopUploadWaitingTick();
+                if (xhr.status >= 200 && xhr.status < 400) {
+                    setUploadProgress(100, "Upload finished", "Loading server response...");
+                    window.setTimeout(function () {
+                        document.open();
+                        document.write(xhr.responseText);
+                        document.close();
+                    }, 250);
+                    return;
+                }
+
+                setUploadProgress(uploadProgressValue, "Upload failed", "Server returned an unexpected response. Please try again (remember: max upload 10GB).");
+                runBtn.disabled = false;
+                runBtn.textContent = "Run Inference";
+            };
+
+            xhr.onerror = function () {
+                stopUploadWaitingTick();
+                setUploadProgress(uploadProgressValue, "Upload failed", "Network error during upload. Check connection and retry.");
+                runBtn.disabled = false;
+                runBtn.textContent = "Run Inference";
+            };
+
+            xhr.send(formData);
+        });
+    }
 })();
 </script>
 

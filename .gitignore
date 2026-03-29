@@ -2,3 +2,6 @@
 /data
 /saved_models
 /uploads
+static/plots/*
+*.png
+*.pyc

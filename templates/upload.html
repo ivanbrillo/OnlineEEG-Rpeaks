@@ -11,18 +11,29 @@
 <!-- ── Upload form ────────────────────────────────────────── -->
 <div class="card">
     <h2>Upload</h2>
-    <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+    <form id="training-upload-form" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
         <div class="form-group">
             <label for="zip_file">Training Data (ZIP)</label>
             <input type="file" id="zip_file" name="zip_file" accept=".zip" required>
             <span class="hint">
                 ZIP must contain pairs of <code>P###_EEG.mat</code> and <code>P###_ECG.mat</code>
                 for each subject (e.g. <code>P023_EEG.mat</code> + <code>P023_ECG.mat</code>).
-                Files may be in subdirectories. Sampling rate is read automatically from <code>EEG.srate</code>.
+                Files may be in subdirectories. Sampling rate is read automatically from <code>EEG.srate</code>. Max .zip size: 10GB
             </span>
         </div>
         <div class="btn-group">
-            <button type="submit" class="btn btn-primary">Upload &amp; Parse</button>
+            <button type="submit" class="btn btn-primary" id="training-upload-btn">Upload &amp; Parse</button>
+        </div>
+
+        <div class="upload-progress" id="training-upload-progress" style="display:none;">
+            <div class="upload-progress-head">
+                <span id="training-upload-status">Preparing upload...</span>
+                <span id="training-upload-percent">0%</span>
+            </div>
+            <div class="upload-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Training upload progress">
+                <div class="upload-progress-fill" id="training-upload-fill"></div>
+            </div>
+            <div class="hint" id="training-upload-detail">Large files may take several minutes to transfer.</div>
         </div>
     </form>
 </div>
@@ -93,4 +104,112 @@
         </tbody>
     </table>
 </div>
+
+<script>
+(function () {
+    var form = document.getElementById("training-upload-form");
+    var fileInput = document.getElementById("zip_file");
+    var submitBtn = document.getElementById("training-upload-btn");
+    var progressWrap = document.getElementById("training-upload-progress");
+    var progressTrack = progressWrap ? progressWrap.querySelector(".upload-progress-track") : null;
+    var progressFill = document.getElementById("training-upload-fill");
+    var progressStatus = document.getElementById("training-upload-status");
+    var progressPercent = document.getElementById("training-upload-percent");
+    var progressDetail = document.getElementById("training-upload-detail");
+    var waitingTimer = null;
+    var progressValue = 0;
+
+    if (!form || !window.XMLHttpRequest || !progressWrap || !progressTrack || !progressFill) {
+        return;
+    }
+
+    function setProgress(value, statusText, detailText) {
+        progressValue = Math.max(0, Math.min(100, value));
+        progressFill.style.width = progressValue + "%";
+        progressTrack.setAttribute("aria-valuenow", String(progressValue));
+        if (progressPercent) {
+            progressPercent.textContent = Math.round(progressValue) + "%";
+        }
+        if (statusText && progressStatus) {
+            progressStatus.textContent = statusText;
+        }
+        if (detailText && progressDetail) {
+            progressDetail.textContent = detailText;
+        }
+    }
+
+    function startWaitingTick() {
+        stopWaitingTick();
+        waitingTimer = setInterval(function () {
+            if (progressValue < 95) {
+                setProgress(progressValue + 1, "Upload complete, server processing...", "The server is validating and parsing your ZIP.");
+            }
+        }, 850);
+    }
+
+    function stopWaitingTick() {
+        if (waitingTimer) {
+            clearInterval(waitingTimer);
+            waitingTimer = null;
+        }
+    }
+
+    form.addEventListener("submit", function (evt) {
+        if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+            return;
+        }
+
+        evt.preventDefault();
+
+        var xhr = new XMLHttpRequest();
+        var formData = new FormData(form);
+
+        progressWrap.style.display = "block";
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Uploading...";
+        setProgress(0, "Starting upload...", "Large files may take several minutes to transfer.");
+
+        xhr.open("POST", form.action, true);
+
+        xhr.upload.addEventListener("progress", function (event) {
+            if (!event.lengthComputable || event.total <= 0) {
+                return;
+            }
+            var uploadRatio = event.loaded / event.total;
+            var visualPercent = Math.min(90, Math.floor(uploadRatio * 90));
+            setProgress(visualPercent, "Uploading files...", "Uploading " + (event.loaded / (1024 * 1024)).toFixed(1) + " MB of " + (event.total / (1024 * 1024)).toFixed(1) + " MB");
+            if (uploadRatio >= 1) {
+                setProgress(92, "Upload complete, server processing...", "The server is validating and parsing your ZIP.");
+                startWaitingTick();
+            }
+        });
+
+        xhr.onload = function () {
+            stopWaitingTick();
+            if (xhr.status >= 200 && xhr.status < 400) {
+                setProgress(100, "Upload finished", "Loading server response...");
+                window.setTimeout(function () {
+                    document.open();
+                    document.write(xhr.responseText);
+                    document.close();
+                }, 250);
+                return;
+            }
+
+            setProgress(progressValue, "Upload failed", "Server returned an unexpected response. Please try again (remember: max upload 10GB).");
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Upload & Parse";
+        };
+
+        xhr.onerror = function () {
+            stopWaitingTick();
+            setProgress(progressValue, "Upload failed", "Network error during upload. Check connection and retry.");
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Upload & Parse";
+        };
+
+        xhr.send(formData);
+    });
+})();
+</script>
 {% endblock %}

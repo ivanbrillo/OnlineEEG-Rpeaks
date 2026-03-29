@@ -2,12 +2,14 @@ import os
 import re
 import tempfile
 import zipfile
+import math
 import numpy as np
 import torch
 from torch.utils.data import TensorDataset, DataLoader
 import scipy.io
 
 from callbacks.model import load_model_bundle
+from callbacks.preprocessing import get_saved_subject_data
 from lib.model import SeizureTransformerImproved
 from lib.dataset_utils import bandpass_eeg, create_segments_nonoverlapping, scale_window_standard
 from lib.target_generation import compute_R_distance_next
@@ -33,6 +35,24 @@ _CHANNELS_64 = [
 # ── Module-level state ─────────────────────────────────────────────────────────
 _inference_results = None   # returned by get_results()
 _inference_data = None      # raw arrays for on-demand window plot generation
+
+
+def _clean_metric_value(value):
+    """Convert metric values to JSON-safe floats; return None for NaN/inf/invalid."""
+    if value is None:
+        return None
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(out):
+        return None
+    return out
+
+
+def _peaks_to_seconds(peaks_samples, fs):
+    """Convert sample indices to seconds from the segment start."""
+    return [float(p) / float(fs) for p in np.asarray(peaks_samples, dtype=float).ravel().tolist()]
 
 
 # ── ZIP parsing ────────────────────────────────────────────────────────────────
@@ -94,6 +114,32 @@ def _parse_inference_zip(zip_path):
     return subjects
 
 
+def _load_inference_subjects_from_cache(subject_ids):
+    """
+    Load selected subjects from the parsed-data cache (data/data_parsed.pkl).
+
+    Returns:
+        dict[str, dict]: Keyed by subject ID, with inference-compatible fields.
+    """
+    cached = get_saved_subject_data(subject_ids)
+    if not cached:
+        raise ValueError("No cached subjects available. Upload training data first.")
+
+    subjects = {}
+    for sid, row in cached.items():
+        eeg = np.asarray(row["EEG"], dtype=float)
+        entry = {
+            "EEG": eeg,
+            "freq": float(row["freq"]),
+            "has_ecg": "ECG" in row and "R_peaks" in row,
+        }
+        if entry["has_ecg"]:
+            entry["ECG"] = np.asarray(row["ECG"], dtype=float).ravel()
+            entry["R_peaks"] = np.asarray(row["R_peaks"], dtype=int).ravel()
+        subjects[sid] = entry
+    return subjects
+
+
 # ── Preprocessing helpers ──────────────────────────────────────────────────────
 
 def _apply_preprocessing(subjects, config):
@@ -124,11 +170,43 @@ def _apply_preprocessing(subjects, config):
     }
 
     # ── Channel selection ─────────────────────────────────────────────────────
+    if n_channels_requested not in (64, 128):
+        raise ValueError(f"Unsupported channel selection: {n_channels_requested}. Use 64 or 128.")
+
     if n_channels_requested == 64:
         ch_map = hp.get("channels_64_map", _CHANNELS_64)
         ch_indices = [int(ch[1:]) - 1 for ch in ch_map]
+
         for sid in subjects:
-            subjects[sid]["EEG"] = subjects[sid]["EEG"][ch_indices, :]
+            eeg = np.asarray(subjects[sid]["EEG"])
+            n_ch = int(eeg.shape[0])
+
+            if n_ch == 128:
+                if max(ch_indices, default=-1) >= n_ch:
+                    raise ValueError(
+                        f"64-channel map references channel index {max(ch_indices)} but subject {sid} has only {n_ch} channels."
+                    )
+                subjects[sid]["EEG"] = eeg[ch_indices, :]
+            elif n_ch == 64:
+                # Subject is already 64-channel; keep as-is.
+                continue
+            else:
+                raise ValueError(
+                    f"Subject {sid} has {n_ch} EEG channels. Expected 64 or 128 for 64-channel inference mode."
+                )
+    else:
+        invalid = []
+        for sid in subjects:
+            n_ch = int(np.asarray(subjects[sid]["EEG"]).shape[0])
+            if n_ch != 128:
+                invalid.append((sid, n_ch))
+
+        if invalid:
+            details = ", ".join(f"{sid}={count}ch" for sid, count in invalid)
+            raise ValueError(
+                "128-channel inference mode requires all selected subjects to have 128 channels. "
+                f"Found: {details}."
+            )
 
     # ── Bandpass filter ───────────────────────────────────────────────────────
     if use_butterworth:
@@ -151,7 +229,7 @@ def _apply_preprocessing(subjects, config):
 
 # ── Main inference entry point ─────────────────────────────────────────────────
 
-def run_inference(model_id, zip_path, log_fn=None):
+def run_inference(model_id, zip_path=None, included_subjects=None, log_fn=None):
     """
     Run the trained model on new evaluation subjects from a ZIP file.
 
@@ -160,7 +238,9 @@ def run_inference(model_id, zip_path, log_fn=None):
     Args:
         model_id (str): Identifier of the saved model (from list_available_models)
                         OR an absolute path to a .pt file (manual upload).
-        zip_path (str): Absolute path to the uploaded ZIP file.
+        zip_path (str | None): Absolute path to the uploaded ZIP file.
+        included_subjects (list[str] | None): Subject IDs selected from the
+                existing parsed-data cache.
         log_fn (callable | None): Optional callback to emit a log line in real time.
 
     Returns:
@@ -194,9 +274,17 @@ def run_inference(model_id, zip_path, log_fn=None):
     _log(f"Model: in_channels={in_channels}, in_samples={in_samples}")
 
     # ── Parse ZIP ─────────────────────────────────────────────────────────────
-    _log("Parsing ZIP file...")
-    subjects = _parse_inference_zip(zip_path)
-    _log(f"Found {len(subjects)} subject(s): {', '.join(sorted(subjects))}")
+    if included_subjects:
+        _log("Loading subjects from cached dataset...")
+        subjects = _load_inference_subjects_from_cache(included_subjects)
+        _log(f"Loaded {len(subjects)} subject(s) from data_parsed.pkl: {', '.join(sorted(subjects))}")
+    else:
+        if not zip_path:
+            raise ValueError("Either a ZIP file or cached subjects must be provided for inference.")
+        _log("Parsing ZIP file...")
+        subjects = _parse_inference_zip(zip_path)
+        _log(f"Found {len(subjects)} subject(s): {', '.join(sorted(subjects))}")
+
     subjects_with_ecg = [s for s, d in subjects.items() if d["has_ecg"]]
     if subjects_with_ecg:
         _log(f"ECG available for: {', '.join(sorted(subjects_with_ecg))}")
@@ -587,4 +675,122 @@ def recompute_metrics(new_eval_params):
         },
         "subject_details": subject_details,
         "eval_params": eval_params,
+    }
+
+
+def build_inference_export():
+    """
+    Build a JSON-serializable dictionary with per-subject and per-segment
+    R-peak predictions and, when ECG is available, ground truth and metrics.
+
+    Returns:
+        dict: JSON-ready export payload.
+
+    Raises:
+        ValueError: If no inference data is available.
+    """
+    global _inference_data, _inference_results
+
+    if _inference_data is None or _inference_results is None:
+        raise ValueError("No inference data available. Run inference first.")
+
+    subjects = _inference_data.get("subjects", {})
+    eval_params = _inference_data.get("eval_params", {})
+
+    fs = float(eval_params.get("fs", 0.0))
+    window_len = int(eval_params.get("window_len", 0))
+    if fs <= 0 or window_len <= 0:
+        raise ValueError("Inference data is incomplete. Re-run inference.")
+
+    subject_metric_map = {
+        row.get("subject_id"): row
+        for row in (_inference_results.get("per_subject") or [])
+        if row.get("subject_id")
+    }
+
+    export_subjects = []
+    for sid in sorted(subjects):
+        d = subjects[sid]
+        n_windows = int(d["n_windows"])
+        has_ecg = bool(d["has_ecg"])
+        pred_dist_all = d["pred_dist"]
+        gt_dist_all = d.get("gt_dist")
+
+        subject_metrics = None
+        if has_ecg:
+            sm = subject_metric_map.get(sid, {})
+            subject_metrics = {
+                "mae_s": _clean_metric_value(sm.get("mae")),
+                "precision": _clean_metric_value(sm.get("precision")),
+                "recall": _clean_metric_value(sm.get("recall")),
+                "f1": _clean_metric_value(sm.get("f1")),
+                "mrr_error_percent": _clean_metric_value(sm.get("mrr_error")),
+                "prr50_error_percent": _clean_metric_value(sm.get("prr50_error")),
+                "sdrr_error_percent": _clean_metric_value(sm.get("sdrr_error")),
+                "rmssd_error_percent": _clean_metric_value(sm.get("rmssd_error")),
+            }
+
+        segments = []
+        for idx in range(n_windows):
+            pred_peaks = extract_peaks_from_distance_transform(
+                pred_dist_all[idx],
+                window_len,
+                int(eval_params["min_dist"]),
+                float(eval_params["height_threshold"]),
+                float(eval_params["prominence"]),
+            )
+
+            segment_entry = {
+                "segment_index": idx,
+                "predicted_r_peaks_s": _peaks_to_seconds(pred_peaks, fs),
+            }
+
+            if has_ecg and gt_dist_all is not None:
+                gt_peaks = extract_peaks_from_distance_transform(
+                    gt_dist_all[idx],
+                    window_len,
+                    int(eval_params["min_dist"]),
+                    float(eval_params["height_threshold"]),
+                    float(eval_params["prominence"]),
+                )
+                res = evaluate(pred_peaks, gt_peaks, f=fs, window_len=window_len)
+                _, _, _, rec, prec, f1 = discrete_score(
+                    pred_peaks, gt_peaks, fs, float(eval_params["tol_ms"])
+                )
+                segment_entry["true_r_peaks_s"] = _peaks_to_seconds(gt_peaks, fs)
+                segment_entry["segment_metrics"] = {
+                    "mae_s": _clean_metric_value(res.get("mae")),
+                    "precision": _clean_metric_value(prec),
+                    "recall": _clean_metric_value(rec),
+                    "f1": _clean_metric_value(f1),
+                    "mrr_error_percent": _clean_metric_value(res.get("mrr_error")),
+                    "prr50_error_percent": _clean_metric_value(res.get("prr50_error")),
+                    "sdrr_error_percent": _clean_metric_value(res.get("sdrr_error")),
+                    "rmssd_error_percent": _clean_metric_value(res.get("rmssd_error")),
+                }
+
+            segments.append(segment_entry)
+
+        export_subjects.append({
+            "subject_id": sid,
+            "segment_length": {
+                "samples": window_len,
+                "seconds": float(window_len) / float(fs),
+            },
+            "subject_metrics": subject_metrics,
+            "segments": segments,
+        })
+
+    return {
+        "format_version": "1.0",
+        "eval_params": {
+            "height_threshold": float(eval_params["height_threshold"]),
+            "min_dist": int(eval_params["min_dist"]),
+            "tol_ms": float(eval_params["tol_ms"]),
+            "prominence": float(eval_params["prominence"]),
+            "fs_hz": fs,
+            "window_length_samples": window_len,
+            "window_length_seconds": float(window_len) / float(fs),
+        },
+        "subjects": export_subjects,
     }
