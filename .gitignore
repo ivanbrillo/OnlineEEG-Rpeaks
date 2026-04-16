@@ -5,3 +5,5 @@
 static/plots/*
 *.png
 *.pyc
+/venv/**
+*.zip

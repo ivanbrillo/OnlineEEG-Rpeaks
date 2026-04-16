@@ -100,7 +100,7 @@ def handle_training_upload(zip_path):
             eeg_mat    = loadmat(eeg_files[subj_id])
             eeg_struct = eeg_mat["EEG"]
             eeg_data   = eeg_struct["data"][0, 0].astype(float)   # (channels, timepoints)
-            srate      = float(eeg_struct["srate"][0, 0])
+            srate      = float(np.asarray(eeg_struct["srate"][0, 0]).reshape(-1)[0])
 
             # ECG ---------------------------------------------------------------
             ecg_mat    = loadmat(ecg_files[subj_id])
