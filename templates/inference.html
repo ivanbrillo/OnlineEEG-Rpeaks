@@ -55,6 +55,12 @@
             <span class="hint">ZIP must contain <code>P###_EEG.mat</code> files. <code>P###_ECG.mat</code> files are optional — if provided, ground-truth metrics and ECG overlay plots are computed. Evaluation subjects are not added to the training dataset.</span>
         </div>
 
+        <div class="flash flash-warning">
+            <strong>&#9888; Train/Validation subjects — do not use for independent testing:</strong><br>
+            Train: [111, 105, 62, 110, 28, 99, 120, 121, 29, 57, 66, 97, 107, 103, 104, 23, 58, 73, 33, 109, 27, 113, 30, 40, 35, 93]<br>
+            Validation: [82, 49, 41, 52, 88, 71, 117, 69, 45, 101]
+        </div>
+
         <div class="form-group" id="cached-source-group" style="display:none;">
             <label>Include Subjects From Cached Dataset</label>
             {% if subjects %}

@@ -62,7 +62,6 @@ nav ul li a.active { color: #fff; border-bottom: 2px solid #3498db; }
 
 .nav-reset { color: #e74c3c !important; }
 .nav-reset:hover { background: rgba(231,76,60,0.12) !important; }
-
 /* ── Flash messages ───────────────────────────────────────── */
 .flash-container { margin-bottom: 1.5rem; }
 
@@ -74,9 +73,10 @@ nav ul li a.active { color: #fff; border-bottom: 2px solid #3498db; }
     font-size: 0.93rem;
 }
 
-.flash-success { background: #eafaf1; border-color: #27ae60; color: #1e8449; }
-.flash-error   { background: #fdedec; border-color: #e74c3c; color: #c0392b; }
-.flash-info    { background: #eaf4fb; border-color: #3498db; color: #1a6fa0; }
+.flash-success  { background: #eafaf1; border-color: #27ae60; color: #1e8449; }
+.flash-error    { background: #fdedec; border-color: #e74c3c; color: #c0392b; }
+.flash-info     { background: #eaf4fb; border-color: #3498db; color: #1a6fa0; }
+.flash-warning  { background: #fef9e7; border-color: #f39c12; color: #7d5700; }
 
 /* ── Cards ────────────────────────────────────────────────── */
 .card {

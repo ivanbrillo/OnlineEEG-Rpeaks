@@ -192,134 +192,27 @@ def _run_training_thread(config, excluded_subjects):
 
 @app.route("/training")
 def training():
-    subjects = []
-    try:
-        subjects = get_saved_subjects()
-    except NotImplementedError:
-        pass  # silently show empty list; user will upload data first
-    except Exception as e:
-        flash(f"Could not load subjects: {e}", "error")
-
-    form_values = _state.get("training_form_values")
-
-    return render_template(
-        "training.html",
-        subjects=subjects,
-        default_hyperparams=DEFAULT_HYPERPARAMS,
-        training_logs=_state["training_logs"],
-        training_status=_state["training_status"],
-        training_running=_state["training_running"],
-        training_metrics=_state["training_metrics"],
-        training_plot=_state["training_plot"],
-        last_model_name=_state["last_model_name"],
-        form_values=form_values,
-    )
+    return redirect(url_for("index"))
 
 
 @app.route("/training/status")
 def training_status_api():
-    """JSON endpoint polled by the training page to stream live log updates."""
-    with _state_lock:
-        data = {
-            "logs": _state["training_logs"],
-            "running": _state["training_running"],
-            "status": _state["training_status"],
-            "metrics": _state["training_metrics"],
-            "plot": _state["training_plot"],
-        }
-    return jsonify(data)
+    return redirect(url_for("index"))
 
 
 @app.route("/training/start", methods=["POST"])
 def training_start():
-    if _state["training_running"]:
-        flash("Training is already running.", "info")
-        return redirect(url_for("training"))
-
-    form_values = {
-        "model_name": request.form.get("model_name", "").strip(),
-        "channels": request.form.get("channels", "64"),
-        "overlap_percentage": request.form.get("overlap_percentage", "0"),
-        "butterworth": bool(request.form.get("butterworth")),
-        "f_min": request.form.get("f_min", "5"),
-        "f_max": request.form.get("f_max", "22.5"),
-        "validation_ratio": request.form.get("validation_ratio", "0.3"),
-        "time_window_length": request.form.get("time_window_length", "10"),
-        "hyperparams": request.form.get("hyperparams", "{}"),
-        "excluded_subjects": request.form.getlist("excluded_subjects"),
-    }
-    _state["training_form_values"] = form_values
-
-    model_name = request.form.get("model_name", "").strip()
-    if not model_name:
-        flash("Model name is required.", "error")
-        return redirect(url_for("training"))
-
-    hyperparams = safe_json_parse(request.form.get("hyperparams", "{}"))
-    if not hyperparams:
-        flash("Invalid JSON in the hyperparameters field.", "error")
-        return redirect(url_for("training"))
-
-    butterworth = bool(request.form.get("butterworth"))
-
-    # Inject UI-controlled fields into hyperparams so training.py finds them normally
-    hyperparams.setdefault("general", {})["VALIDATION_RATIO"] = float(request.form.get("validation_ratio", 0.3))
-    hyperparams.setdefault("windowing", {})["time_window_length"] = float(request.form.get("time_window_length", 10))
-    hyperparams.setdefault("windowing", {})["overlap_percentage"] = float(request.form.get("overlap_percentage", 0.0))
-
-    config = {
-        "model_name": model_name,
-        "channels": int(request.form.get("channels", 64)),
-        "butterworth": butterworth,
-        "f_min": float(request.form.get("f_min", 5.0)) if butterworth else None,
-        "f_max": float(request.form.get("f_max", 22.5)) if butterworth else None,
-        "hyperparams": hyperparams,
-    }
-    excluded_subjects = request.form.getlist("excluded_subjects")
-
-    _state["last_model_name"] = model_name
-    _state["last_config"] = config
-
-    t = threading.Thread(target=_run_training_thread, args=(config, excluded_subjects), daemon=True)
-    t.start()
-
-    flash("Training started. Logs will update below.", "info")
-    return redirect(url_for("training"))
+    return redirect(url_for("index"))
 
 
 @app.route("/training/download")
 def training_download():
-    model_name = _state.get("last_model_name", "")
-    if not model_name:
-        flash("No trained model available. Run training first.", "error")
-        return redirect(url_for("training"))
-    checkpoint = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "saved_models", f"{model_name}_best_model.pt"
-    )
-    if not os.path.exists(checkpoint):
-        flash("Checkpoint file not found. Run training first.", "error")
-        return redirect(url_for("training"))
-    return send_file(checkpoint, as_attachment=True,
-                     download_name=f"{model_name}_best_model.pt")
+    return redirect(url_for("index"))
 
 
 @app.route("/training/save", methods=["POST"])
 def training_save():
-    model_name = request.form.get("model_name", "").strip()
-    if not model_name:
-        flash("Model name is required to save.", "error")
-        return redirect(url_for("training"))
-
-    try:
-        result = save_trained_model(model_name, _state["last_config"])
-        flash(result.get("message", "Model saved successfully."), "success")
-    except NotImplementedError:
-        flash("save_trained_model: not yet implemented.", "info")
-    except Exception as e:
-        flash(f"Save error: {e}", "error")
-
-    return redirect(url_for("training"))
+    return redirect(url_for("index"))
 
 
 # ── Inference ──────────────────────────────────────────────────────────────────

@@ -13,12 +13,7 @@
         <h3>Upload Data</h3>
         <p>Upload a ZIP of EEG/ECG files and configure preprocessing parameters.</p>
     </a>
-    <a href="{{ url_for('training') }}" class="nav-card">
-        <div class="nav-card-icon">&#129504;</div>
-        <h3>Training</h3>
-        <p>Configure model hyperparameters, select subjects, and start training.</p>
-    </a>
-    <a href="{{ url_for('inference') }}" class="nav-card">
+<a href="{{ url_for('inference') }}" class="nav-card">
         <div class="nav-card-icon">&#9654;</div>
         <h3>Inference &amp; Results</h3>
         <p>Run a saved model on new subjects and view metrics and plots.</p>

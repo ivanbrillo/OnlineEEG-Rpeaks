@@ -7,6 +7,11 @@
     <p>Configure model parameters, select subjects to include, then start training.</p>
 </div>
 
+<div class="card">
+    <p class="text-muted">Training is not available in this deployment.</p>
+</div>
+
+{% if false %}
 <!-- ── Section 1: Configuration ──────────────────────────── -->
 <form action="{{ url_for('training_start') }}" method="post">
 <div class="card">
@@ -288,4 +293,5 @@ function toggleFilterFields(checkbox) {
     {% endif %}
 })();
 </script>
+{% endif %}{# end if false #}
 {% endblock %}

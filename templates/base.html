@@ -14,7 +14,6 @@
     <ul>
         <li><a href="{{ url_for('index') }}"    {% if request.endpoint == 'index'     %}class="active"{% endif %}>Home</a></li>
         <li><a href="{{ url_for('upload') }}"   {% if request.endpoint == 'upload'    %}class="active"{% endif %}>Upload</a></li>
-        <li><a href="{{ url_for('training') }}" {% if request.endpoint == 'training'  %}class="active"{% endif %}>Training</a></li>
         <li><a href="{{ url_for('inference') }}" {% if request.endpoint == 'inference' %}class="active"{% endif %}>Inference &amp; Results</a></li>
         <li>
             <form action="{{ url_for('reset') }}" method="post" style="display:inline"
