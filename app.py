@@ -20,7 +20,7 @@ from utils.ui_helpers import allowed_file, allowed_model_file, format_metric, sa
 # ── App setup ─────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
-app.secret_key = "dev-secret-key-change-in-production"
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
 app.config["MAX_CONTENT_LENGTH"] = 10000 * 1024 * 1024  # 10GB upload limit
 
 # Use the OS temp directory so uploaded files never land inside the project
@@ -291,7 +291,7 @@ def inference():
             return redirect(url_for("inference"))
 
         model_id = request.form.get("model_id", "").strip()
-        data_source = request.form.get("data_source", "zip").strip().lower()
+        data_source = request.form.get("data_source", "cached").strip().lower()
         pt_file = request.files.get("pt_file")
         zip_file = request.files.get("zip_file")
         included_subjects = request.form.getlist("included_subjects")
@@ -457,4 +457,6 @@ def results():
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)
+    debug_mode = os.environ.get("FLASK_DEBUG", "0").lower() in {"1", "true", "yes"}
+    port = int(os.environ.get("PORT", "5000"))
+    app.run(debug=debug_mode, host="0.0.0.0", port=port, use_reloader=False)

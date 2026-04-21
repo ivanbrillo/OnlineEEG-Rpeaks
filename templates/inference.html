@@ -4,7 +4,7 @@
 {% block content %}
 {% set iv = inference_form_values or {} %}
 {% set selected_model_id = iv.get('model_id', '') %}
-{% set selected_data_source = iv.get('data_source', 'zip') %}
+{% set selected_data_source = iv.get('data_source', 'cached') %}
 {% set selected_subjects = iv.get('included_subjects', []) %}
 <div class="page-header">
     <h1>Inference &amp; Results</h1>
@@ -409,7 +409,7 @@
 
     function getDataSource() {
         var selected = document.querySelector('input[name="data_source"]:checked');
-        return selected ? selected.value : "zip";
+        return selected ? selected.value : "cached";
     }
 
     function updateDataSourceUI() {
