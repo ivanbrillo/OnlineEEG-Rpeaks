@@ -37,6 +37,25 @@ _inference_results = None   # returned by get_results()
 _inference_data = None      # raw arrays for on-demand window plot generation
 
 
+def clear_inference_state():
+    """Reset module-level inference state and delete stale plot PNGs.
+
+    Call at the start of a new run and on dataset reset so the Inference page
+    never shows results left over from a previous run.
+    """
+    global _inference_results, _inference_data
+    _inference_results = None
+    _inference_data = None
+
+    if os.path.isdir(STATIC_PLOTS_DIR):
+        for fname in os.listdir(STATIC_PLOTS_DIR):
+            if fname.startswith("inference_") and fname.endswith(".png"):
+                try:
+                    os.remove(os.path.join(STATIC_PLOTS_DIR, fname))
+                except OSError:
+                    pass
+
+
 def _clean_metric_value(value):
     """Convert metric values to JSON-safe floats; return None for NaN/inf/invalid."""
     if value is None:
@@ -314,14 +333,7 @@ def run_inference(model_id, zip_path=None, included_subjects=None, log_fn=None):
     model.load_state_dict(state_dict)
     model.eval()
 
-    # ── Clear stale plots from any previous inference run ────────────────────
     os.makedirs(STATIC_PLOTS_DIR, exist_ok=True)
-    for fname in os.listdir(STATIC_PLOTS_DIR):
-        if fname.startswith("inference_") and fname.endswith(".png"):
-            try:
-                os.remove(os.path.join(STATIC_PLOTS_DIR, fname))
-            except OSError:
-                pass
 
     # ── Per-subject inference ─────────────────────────────────────────────────
 

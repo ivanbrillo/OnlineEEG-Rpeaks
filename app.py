@@ -13,7 +13,7 @@ from werkzeug.utils import secure_filename
 from callbacks.preprocessing import handle_training_upload, get_saved_subjects, reset_dataset
 from callbacks.training import start_training
 from callbacks.model import save_trained_model, list_available_models
-from callbacks.inference import run_inference, generate_window_plot, recompute_metrics, build_inference_export
+from callbacks.inference import run_inference, generate_window_plot, recompute_metrics, build_inference_export, clear_inference_state
 from callbacks.results import get_results
 from utils.ui_helpers import allowed_file, allowed_model_file, format_metric, safe_json_parse
 
@@ -225,6 +225,7 @@ def _run_inference_thread(model_id, zip_path=None, included_subjects=None):
         _state["inference_status"] = "Running…"
         _state["inference_summary"] = None
         _state["inference_plot_files"] = []
+        clear_inference_state()
 
     def log_fn(line):
         with _state_lock:
@@ -436,6 +437,7 @@ def reset():
             for key in _state:
                 _state[key] = "" if isinstance(_state[key], str) else None
             _state["inference_plot_files"] = []
+            clear_inference_state()
             flash(result.get("message", "Dataset reset successfully."), "success")
         except NotImplementedError:
             flash("reset_dataset: not yet implemented.", "info")
