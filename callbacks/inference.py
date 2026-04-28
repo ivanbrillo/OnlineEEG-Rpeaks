@@ -354,6 +354,7 @@ def run_inference(model_id, zip_path=None, included_subjects=None, log_fn=None):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     _log(f"Device: {device}")
 
+    default_norm = "instance" if apply_ea else "batch"
     model = SeizureTransformerImproved(
         in_channels=in_channels,
         in_samples=in_samples,
@@ -364,6 +365,7 @@ def run_inference(model_id, zip_path=None, included_subjects=None, log_fn=None):
         skip_type=str(model_hp.get("skip_type", "SE")),
         conv_type=str(model_hp.get("conv_type", "default")),
         skip_concat=bool(model_hp.get("skip_concat", False)),
+        norm_type=str(model_hp.get("norm_type", default_norm)),
     ).to(device)
     model.load_state_dict(state_dict)
     model.eval()
