@@ -318,7 +318,7 @@
     </div>
 
     <div class="plot-card" style="max-width:100%;">
-        <img src="{{ url_for('static', filename='plots/' + info.initial_plot) }}"
+        <img src="{{ url_for('static', filename='plots/' + info.initial_plot) }}?t={{ inference_run_id }}"
              alt="{{ subject_id }} window 0"
              id="plot-img-{{ subject_id }}"
              style="width:100%; height:auto;">

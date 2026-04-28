@@ -42,6 +42,7 @@ _state = {
     "inference_summary": None,
     "inference_plot_files": [],
     "inference_results": None,
+    "inference_run_id": "",
     "training_form_values": None,
     "inference_form_values": None,
 }
@@ -219,14 +220,6 @@ def training_save():
 
 def _run_inference_thread(model_id, zip_path=None, included_subjects=None):
     """Background thread that runs run_inference and streams logs via log_fn."""
-    with _state_lock:
-        _state["inference_running"] = True
-        _state["inference_logs"] = ""
-        _state["inference_status"] = "Running…"
-        _state["inference_summary"] = None
-        _state["inference_plot_files"] = []
-        clear_inference_state()
-
     def log_fn(line):
         with _state_lock:
             _state["inference_logs"] += line + "\n"
@@ -333,6 +326,15 @@ def inference():
             zip_path = os.path.join(UPLOAD_FOLDER, filename)
             zip_file.save(zip_path)
 
+        with _state_lock:
+            _state["inference_running"] = True
+            _state["inference_logs"] = ""
+            _state["inference_status"] = "Running…"
+            _state["inference_summary"] = None
+            _state["inference_plot_files"] = []
+            _state["inference_run_id"] = str(int(datetime.now(timezone.utc).timestamp() * 1000))
+            clear_inference_state()
+
         t = threading.Thread(
             target=_run_inference_thread,
             args=(model_id, zip_path, included_subjects if data_source == "cached" else None),
@@ -361,6 +363,7 @@ def inference():
         inference_status=_state["inference_status"],
         inference_running=_state["inference_running"],
         inference_summary=_state["inference_summary"],
+        inference_run_id=_state["inference_run_id"],
         results=results_data,
     )
 
