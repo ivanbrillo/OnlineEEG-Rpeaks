@@ -32,6 +32,32 @@ _CHANNELS_64 = [
     'E75', 'E82', 'E57', 'E100'
 ]
 
+# ── Euclidean alignment ────────────────────────────────────────────────────────
+
+def _euclidean_alignment(eeg):
+    """Euclidean Space Data Alignment (He & Wu, 2020). eeg: (C, T) → (C, T)."""
+    C, T = eeg.shape
+    R = (eeg @ eeg.T) / T
+    eigvals, eigvecs = np.linalg.eigh(R)
+    eigvals = np.maximum(eigvals, 1e-10)
+    R_inv_sqrt = eigvecs @ np.diag(eigvals ** -0.5) @ eigvecs.T
+    return R_inv_sqrt @ eeg
+
+
+def _model_requires_ea(model_id):
+    """Return True if the model name ends with _EA (case-insensitive).
+
+    For directory-based models (model_id = safe_name_YYYYMMDD_HHMMSS), the
+    timestamp suffix is stripped before the check. For absolute-path uploads
+    the filename stem is checked directly.
+    """
+    if os.path.isabs(model_id):
+        stem = os.path.splitext(os.path.basename(model_id))[0]
+        return stem.upper().endswith("_EA")
+    stripped = re.sub(r"_\d{8}_\d{6}$", "", model_id)
+    return stripped.upper().endswith("_EA")
+
+
 # ── Module-level state ─────────────────────────────────────────────────────────
 _inference_results = None   # returned by get_results()
 _inference_data = None      # raw arrays for on-demand window plot generation
@@ -161,10 +187,11 @@ def _load_inference_subjects_from_cache(subject_ids):
 
 # ── Preprocessing helpers ──────────────────────────────────────────────────────
 
-def _apply_preprocessing(subjects, config):
+def _apply_preprocessing(subjects, config, apply_ea=False):
     """
-    Apply channel selection, butterworth filtering and distance transform
-    computation in-place. Returns (data dict, frequency, seg_len, eval_params).
+    Apply channel selection, butterworth filtering, optional Euclidean alignment
+    and distance transform computation in-place.
+    Returns (frequency, seg_len, eval_params).
     """
     hp = config.get("hyperparams", {})
     n_channels_requested = int(config.get("channels", 128))
@@ -234,6 +261,13 @@ def _apply_preprocessing(subjects, config):
         for sid in subjects:
             subjects[sid]["EEG"] = bandpass_eeg(
                 subjects[sid]["EEG"], frequency, lowcut=lowcut, highcut=highcut
+            )
+
+    # ── Euclidean alignment ───────────────────────────────────────────────────
+    if apply_ea:
+        for sid in subjects:
+            subjects[sid]["EEG"] = _euclidean_alignment(
+                np.asarray(subjects[sid]["EEG"], dtype=float)
             )
 
     # ── Distance transform targets ────────────────────────────────────────────
@@ -311,8 +345,9 @@ def run_inference(model_id, zip_path=None, included_subjects=None, log_fn=None):
         _log("No ECG files found — metrics will not be computed.")
 
     # ── Preprocess ────────────────────────────────────────────────────────────
-    _log("Preprocessing...")
-    frequency, seg_len, eval_params = _apply_preprocessing(subjects, config)
+    apply_ea = _model_requires_ea(model_id)
+    _log("Preprocessing..." + (" (Euclidean alignment enabled)" if apply_ea else ""))
+    frequency, seg_len, eval_params = _apply_preprocessing(subjects, config, apply_ea=apply_ea)
     _log(f"Frequency: {frequency} Hz, window: {seg_len} samples ({seg_len/frequency:.1f}s)")
 
     # ── Reconstruct model ─────────────────────────────────────────────────────
