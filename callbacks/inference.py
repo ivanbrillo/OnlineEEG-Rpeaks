@@ -216,8 +216,8 @@ def _apply_preprocessing(subjects, config, apply_ea=False):
     }
 
     # ── Channel selection ─────────────────────────────────────────────────────
-    if n_channels_requested not in (64, 128):
-        raise ValueError(f"Unsupported channel selection: {n_channels_requested}. Use 64 or 128.")
+    if n_channels_requested not in (64, 90, 128):
+        raise ValueError(f"Unsupported channel selection: {n_channels_requested}. Use 64, 90, or 128.")
 
     if n_channels_requested == 64:
         ch_map = hp.get("channels_64_map", _CHANNELS_64)
@@ -244,13 +244,13 @@ def _apply_preprocessing(subjects, config, apply_ea=False):
         invalid = []
         for sid in subjects:
             n_ch = int(np.asarray(subjects[sid]["EEG"]).shape[0])
-            if n_ch != 128:
+            if n_ch != n_channels_requested:
                 invalid.append((sid, n_ch))
 
         if invalid:
             details = ", ".join(f"{sid}={count}ch" for sid, count in invalid)
             raise ValueError(
-                "128-channel inference mode requires all selected subjects to have 128 channels. "
+                f"{n_channels_requested}-channel inference mode requires all selected subjects to have {n_channels_requested} channels. "
                 f"Found: {details}."
             )
 

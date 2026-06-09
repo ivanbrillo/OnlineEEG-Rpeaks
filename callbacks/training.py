@@ -202,8 +202,8 @@ def start_training(config, excluded_subjects, log_fn=None):
     _log(f"Window: {time_window_length}s = {seg_len} samples, stride: {train_stride}")
 
     # ── Channel selection ─────────────────────────────────────────────────────
-    if n_channels_requested not in (64, 128):
-        raise ValueError(f"Unsupported channel selection: {n_channels_requested}. Use 64 or 128.")
+    if n_channels_requested not in (64, 90, 128):
+        raise ValueError(f"Unsupported channel selection: {n_channels_requested}. Use 64, 90, or 128.")
 
     channel_counts = _summarize_subject_channel_counts(data, usable)
 
@@ -241,16 +241,16 @@ def start_training(config, excluded_subjects, log_fn=None):
         invalid = []
         for sid in usable:
             subj_channels = int(np.asarray(data[sid]["EEG"]).shape[0])
-            if subj_channels != 128:
-                invalid.append((sid, subj_channels))
+            if subj_channels != n_channels_requested:
+                invalid.append((id_to_key[sid], subj_channels))
 
         if invalid:
-            details = ", ".join(f"{id_to_key[sid]}={count}ch" for sid, count in invalid)
+            details = ", ".join(f"{key}={count}ch" for key, count in invalid)
             raise ValueError(
-                "128-channel training mode requires all usable subjects to have 128 channels. "
+                f"{n_channels_requested}-channel training mode requires all usable subjects to have {n_channels_requested} channels. "
                 f"Found: {details}."
             )
-        n_channels = 128
+        n_channels = n_channels_requested
     _log(f"EEG channels: {n_channels}")
 
     # ── Bandpass filter (lowcut/highcut come from UI fields f_min/f_max) ──────

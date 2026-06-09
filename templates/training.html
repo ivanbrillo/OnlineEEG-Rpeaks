@@ -30,9 +30,10 @@
             <label for="channels">EEG Channels</label>
             <select id="channels" name="channels">
                 <option value="64"  {% if form_values and form_values.channels == '64'  %}selected{% endif %}>64</option>
+                <option value="90"  {% if form_values and form_values.channels == '90'  %}selected{% endif %}>90</option>
                 <option value="128" {% if form_values and form_values.channels == '128' %}selected{% endif %}>128</option>
             </select>
-            <span class="hint">64 uses the <code>channels_64_map</code> in JSON subset.</span>
+            <span class="hint">64 uses the <code>channels_64_map</code> JSON subset; 90 and 128 require subjects with exactly that many channels.</span>
         </div>
         <div class="form-group">
             <label for="overlap_percentage">Overlap [%]</label>
