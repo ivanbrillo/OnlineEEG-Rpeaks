@@ -116,8 +116,8 @@ def _parse_inference_zip(zip_path):
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(tmpdir)
 
-    eeg_pat = re.compile(r"(P\d{3})_EEG\.mat$", re.IGNORECASE)
-    ecg_pat = re.compile(r"(P\d{3})_ECG\.mat$", re.IGNORECASE)
+    eeg_pat = re.compile(r"(P\d{3}[^.]*)_EEG\.mat$", re.IGNORECASE)
+    ecg_pat = re.compile(r"(P\d{3}[^.]*)_ECG\.mat$", re.IGNORECASE)
 
     eeg_files = {}
     ecg_files = {}

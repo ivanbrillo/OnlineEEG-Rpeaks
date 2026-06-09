@@ -13,8 +13,9 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(os.path.dirname(_HERE), "data")
 CACHE_PATH = os.path.join(DATA_DIR, "data_parsed.pkl")
 
-_EEG_RE = re.compile(r"^(P\d{3})_EEG\.mat$", re.IGNORECASE)
-_ECG_RE = re.compile(r"^(P\d{3})_ECG\.mat$", re.IGNORECASE)
+# Captures full stem before _EEG/_ECG, e.g. "P001" or "P001_WP2_64"
+_EEG_RE = re.compile(r"^(P\d{3}[^.]*)_EEG\.mat$", re.IGNORECASE)
+_ECG_RE = re.compile(r"^(P\d{3}[^.]*)_ECG\.mat$", re.IGNORECASE)
 
 
 def _load_cache():
@@ -108,10 +109,11 @@ def handle_training_upload(zip_path):
             r_peaks    = ecg_mat["R_peak"].flatten() - 1           # 1-indexed → 0-indexed
 
             new_data[subj_id] = {
-                "EEG":     eeg_data,
-                "ECG":     ecg_signal,
-                "R_peaks": r_peaks,
-                "freq":    srate,
+                "EEG":       eeg_data,
+                "ECG":       ecg_signal,
+                "R_peaks":   r_peaks,
+                "freq":      srate,
+                "n_channels": int(eeg_data.shape[0]),
             }
 
         # ── Merge into cache ───────────────────────────────────────────────────

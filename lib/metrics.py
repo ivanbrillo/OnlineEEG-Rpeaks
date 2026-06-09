@@ -118,7 +118,7 @@ def extract_peaks_from_distance_transform(dist_transform, window_len, min_distan
     Extract peak locations from distance transform signal.
     Returns indices of peaks (valleys in the inverted distance transform).
     """
-    margin = window_len * 0.01 # exclude 1% of the windows
+    margin = window_len / 500
     idx = np.arange(len(dist_transform))
     surrogate_dist = deepcopy(dist_transform)
     surrogate_dist[(idx < margin) | (idx > (window_len - margin))] = 1

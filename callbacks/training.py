@@ -158,11 +158,15 @@ def start_training(config, excluded_subjects, log_fn=None):
     if not cache:
         raise ValueError("No subjects in dataset. Upload data first.")
 
-    # Convert string IDs "P023" -> int 23 for internal use
-    data = {int(k[1:]): v for k, v in cache.items()}
+    # Assign stable integer IDs by sorted position (supports arbitrary string keys)
+    sorted_keys = sorted(cache.keys())
+    key_to_id = {k: i for i, k in enumerate(sorted_keys)}
+    id_to_key = {i: k for i, k in enumerate(sorted_keys)}
 
-    # Convert excluded_subjects (UI strings "P023") -> int set; these are dropped entirely
-    excluded_int = set(int(s[1:]) for s in excluded_subjects if len(s) >= 2)
+    data = {key_to_id[k]: v for k, v in cache.items()}
+
+    # excluded_subjects are the string keys sent from the UI
+    excluded_int = {key_to_id[s] for s in excluded_subjects if s in key_to_id}
 
     all_subjects = sorted(data.keys())
     usable = [s for s in all_subjects if s not in excluded_int]
@@ -185,8 +189,8 @@ def start_training(config, excluded_subjects, log_fn=None):
         raise ValueError("No subjects left for training after val split. Reduce VALIDATION_RATIO.")
 
     _log(f"Subjects — Train: {len(train_subj)}, Val: {len(val_subj)} (excluded: {len(excluded_int)})")
-    _log(f"Train: {train_subj}")
-    _log(f"Val:   {val_subj}")
+    _log(f"Train: {[id_to_key[s] for s in train_subj]}")
+    _log(f"Val:   {[id_to_key[s] for s in val_subj]}")
 
     # ── Determine frequency from data ─────────────────────────────────────────
     frequency = float(data[all_subjects[0]]["freq"])
@@ -214,19 +218,20 @@ def start_training(config, excluded_subjects, log_fn=None):
         for sid in usable:
             subj_eeg = np.asarray(data[sid]["EEG"])
             subj_channels = int(subj_eeg.shape[0])
+            subj_key = id_to_key[sid]
 
             if subj_channels == 128:
                 if max(ch_indices, default=-1) >= subj_channels:
                     raise ValueError(
-                        f"64-channel map references channel index {max(ch_indices)} but subject P{sid:03d} has only {subj_channels} channels."
+                        f"64-channel map references channel index {max(ch_indices)} but subject {subj_key} has only {subj_channels} channels."
                     )
                 data[sid]["EEG"] = subj_eeg[ch_indices, :]
-                mapped_subjects.append(f"P{sid:03d}")
+                mapped_subjects.append(subj_key)
             elif subj_channels == 64:
-                unchanged_subjects.append(f"P{sid:03d}")
+                unchanged_subjects.append(subj_key)
             else:
                 raise ValueError(
-                    f"Subject P{sid:03d} has {subj_channels} EEG channels. Expected 64 or 128 for 64-channel training mode."
+                    f"Subject {subj_key} has {subj_channels} EEG channels. Expected 64 or 128 for 64-channel training mode."
                 )
 
         _log(f"Applied 128->64 mapping to {len(mapped_subjects)} subject(s).")
@@ -240,7 +245,7 @@ def start_training(config, excluded_subjects, log_fn=None):
                 invalid.append((sid, subj_channels))
 
         if invalid:
-            details = ", ".join(f"P{sid:03d}={count}ch" for sid, count in invalid)
+            details = ", ".join(f"{id_to_key[sid]}={count}ch" for sid, count in invalid)
             raise ValueError(
                 "128-channel training mode requires all usable subjects to have 128 channels. "
                 f"Found: {details}."
